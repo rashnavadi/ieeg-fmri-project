@@ -2,19 +2,22 @@
 % written by Tahereh Rashnavadi, Jan 2025
 
 % Define base directories
-base_dir = '/work/levan_lab/eegfmri_epilepsy';
-output_base_dir = '/work/levan_lab/Tara'; % Where shifted IEDs are stored
+% base_dir = '/work/levan_lab/eegfmri_epilepsy';
+% output_base_dir = '/work/levan_lab/Tara'; % Where shifted IEDs are stored
+% baseElecDir = '/work/levan_lab/eegfmri_epilepsy/coordinates'; % where coordinates of electrodes of each subject are saved
 
-% base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/';
-% output_base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/Tara';
+
+base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/';
+output_base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/Tara';
+baseElecDir = '/Users/trashnavadi/Documents/2024/postdoc/Levan/analysis/arc_cluster/coordinates';
 
 % Define the subject list
 % TLE subjects including ICE001, ICE002, ICE005, and ICE012 were excluded as they have strip electrodes.
-% subject_order = {'ICE013'};
+% subject_order = {'ICE033'};
 subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
                  'ICE020', 'ICE022', 'ICE023', 'ICE024', ...
                  'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
-                 'ICE031', 'ICE032', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
+                 'ICE031', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
                  'ICE037', 'ICE038', 'ICE039', 'ICE040', 'ICE041', 'ICE042', ...
                  'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
                  'ICE049', 'ICE050', 'ICE051', 'ICE052', 'ICE053', 'ICE054', ...
@@ -174,7 +177,7 @@ for subj_idx = 1:length(subject_order)
     logAndPrint('Processing subject: %s\n', subject);
 
 
-    % Define the new IED directory (where adjusted times of IEDs wrt EEG time are stored)
+    % Define the new IED directory (where ad times of IEDs wrt EEG time are stored)
     events_dir = fullfile(output_base_dir, subject, 'adjusted_IED_times');
     
     % List all files in the new events directory before filtering
@@ -206,7 +209,7 @@ for subj_idx = 1:length(subject_order)
     for run_idx = 1:length(run_folders)
         run_folder_name = run_folders(run_idx).name;
      
-        % Define full path to EEG cleaned data (new requirement)
+        % Define full path to EEG cleaned data
         eeg_dir = fullfile(base_dir, subject, '3_EEG', '2_Cleaned', run_folder_name, 'IED_Cleaned');
         
         % Identify EEG file
@@ -263,7 +266,8 @@ for subj_idx = 1:length(subject_order)
             logAndPrint('Processing %s (Matching folder: %s, IED type: %s)\n', ...
                 ied_file_name, run_folder_name, ied_type);
 
-            % === Read info from ProcessingLog_&_ChannelLabels ===
+            % === Read info from EEG Log file
+            % (ProcessingLog_&_ChannelLabels) to extract channel labels
             log_file = dir(fullfile(eeg_dir, '*ProcessingLog_&_ChannelLabels.txt'));
             log_file = log_file(~startsWith({log_file.name}, '._')); % Exclude hidden files
             if isempty(log_file)
@@ -291,7 +295,7 @@ for subj_idx = 1:length(subject_order)
                     sampling_rate = sscanf(log_line, 's_Rate: %d');
                 elseif startsWith(log_line, 'n_Channels:')
                     n_channels = sscanf(log_line, 'n_Channels: %d');
-                elseif startsWith(log_line, 'c_Labels (Row):')
+                elseif startsWith(log_line, 'c_Labels (Column):')
                     collecting_labels = true;
                     channel_labels = {}; % Reset labels collection
                 elseif collecting_labels
@@ -302,6 +306,11 @@ for subj_idx = 1:length(subject_order)
                         channel_labels = [channel_labels, strsplit(log_line)];
                     end
                 end
+            end
+
+            % Ensure channel count matches
+            if length(channel_labels) ~= n_channels
+                logAndPrint('⚠ WARNING: Number of extracted EEG channels (%d) does not match n_Channels in log (%d). Check data consistency!\n', length(channel_labels), n_channels);
             end
             
             % Display extracted information
@@ -314,6 +323,72 @@ for subj_idx = 1:length(subject_order)
                 logAndPrint('Missing critical info: skipping.\n');
                 continue;
             end
+
+            % Load electrode coordinate file (excel sheet)
+            electrodeFile = fullfile(baseElecDir, [subject '_channel_info.xlsx']);
+            if ~exist(electrodeFile, 'file')
+                warning('Electrode file not found for %s. Skipping electrode type assignment.', subject);
+                electrodeTypes = repmat({'Unknown'}, length(channel_labels), 1);
+            else
+                % Read electrode info while preserving original column names
+                T = readtable(electrodeFile, 'VariableNamingRule', 'preserve');
+
+                % Display all available column names (for debugging)
+                disp('Column Names in Electrode File:');
+                disp(T.Properties.VariableNames);
+
+                % Ensure we are referencing the correct columns
+                electrodeNameCol = "Electrode name (lab convention)"; % Exact column name
+                electrodeTypeCol = "Electrode type"; % Exact column name
+                includedCol = "Included in iEEG-fMRI study"; % Inclusion column
+                contactCol = "Contact number"; % Contact number column
+
+                % Verify that the required columns exist before accessing
+                requiredCols = [electrodeNameCol, electrodeTypeCol, includedCol, contactCol];
+                if any(~ismember(requiredCols, T.Properties.VariableNames))
+                    error('Some required column names not found in %s. Check for formatting issues.', electrodeFile);
+                end
+
+                % Filter only electrodes that are included in iEEG-fMRI study
+                includedIdx = T{:, includedCol} == 1;
+                T = T(includedIdx, :);
+
+                % Extract necessary data
+                electrodeNames = T{:, electrodeNameCol};  % Extract electrode names
+                electrodeTypesData = T{:, electrodeTypeCol}; % Extract electrode types
+                contactNumbers = T{:, contactCol}; % Extract contact numbers
+
+                % Convert to cell arrays and remove leading/trailing spaces
+                electrodeNames = strtrim(cellstr(electrodeNames));
+                electrodeTypesData = strtrim(cellstr(electrodeTypesData));
+                contactNumbers = strtrim(cellstr(num2str(contactNumbers))); % Convert numbers to string
+
+                % Generate full EEG channel labels (e.g., "sLpsbT" + "4" → "sLpsbT4")
+                fullElectrodeLabels = strcat(electrodeNames, contactNumbers);
+
+                % Create a mapping from full electrode labels to electrode types
+                electrodeTypesMap = containers.Map(fullElectrodeLabels, electrodeTypesData);
+
+                % Ensure channel_labels is a cell array of strings
+                channel_labels = strtrim(cellstr(channel_labels));
+
+                % Initialize electrodeTypes array
+                electrodeTypes = cell(size(channel_labels));
+
+                % Debugging: Print mapping for verification
+                logAndPrint('Total Mapped Electrodes in Excel: %d\n', length(fullElectrodeLabels));
+
+                % Assign electrode types
+                for ch = 1:length(channel_labels)
+                    if isKey(electrodeTypesMap, channel_labels{ch})
+                        electrodeTypes{ch} = electrodeTypesMap(channel_labels{ch});
+                    else
+                        electrodeTypes{ch} = 'Unknown';
+                    end
+                end
+            end
+
+            logAndPrint('Size of electrodeTypes after assignment: %d\n', length(electrodeTypes));
 
             % === ANALYSES FOR EACH RUN OF EACH SUBJECT FOR DIFFERENT TYPES OF IEDS ===
             
@@ -388,6 +463,9 @@ for subj_idx = 1:length(subject_order)
             
             peak_amplitudes_ave_ied = max(abs(average_ieds(:, search_start:search_end)), [], 2);
 
+            logAndPrint('Size of peak_amplitudes_ave_ied: %d\n', length(peak_amplitudes_ave_ied));
+
+
             % Save the output file for each subject
             % 1. Define the new subfolder path for storing peak amplitudes
             peak_amp_dir = fullfile(output_base_dir, subject, 'peak_amp_IED_per_channel');
@@ -400,11 +478,23 @@ for subj_idx = 1:length(subject_order)
             % 3. Build the new output filename inside that folder
             peak_amp_file = fullfile(peak_amp_dir, [ied_file_name(1:end-4), '_peak_amplitudes_50ms_ave_IED.txt']);
 
-            % 4. Save peak amplitudes there
-            writematrix(peak_amplitudes_ave_ied, peak_amp_file, 'Delimiter', 'tab');
-            
-            logAndPrint('  --> Done processing %s (Run folder: %s)\n', ied_file_name, run_folder_name);
+            if length(channel_labels) ~= length(electrodeTypes) || length(channel_labels) ~= length(peak_amplitudes_ave_ied)
+                error('Mismatch in variable lengths: channel_labels(%d), electrodeTypes(%d), peak_amplitudes_ave_ied(%d)', ...
+                    length(channel_labels), length(electrodeTypes), length(peak_amplitudes_ave_ied));
+            end
 
+            % 4. Save peak amplitudes there
+            outputTable = table(channel_labels(:), electrodeTypes(:), peak_amplitudes_ave_ied(:), ...
+                'VariableNames', {'Channel', 'ElectrodeType', 'PeakAmplitude'});          
+
+            if isempty(outputTable)
+                logAndPrint('⚠ WARNING: No valid peak amplitudes found for subject %s.\n', subject);
+            else
+                writetable(outputTable, peak_amp_file, 'Delimiter', 'tab', 'WriteVariableNames', true);
+            end
+
+            logAndPrint('  --> Done processing %s (Run folder: %s)\n', ied_file_name, run_folder_name);        
+        
         end % end of ied_timing_files loop
     end % end of run_folders loop
 end % end of subjects loop
