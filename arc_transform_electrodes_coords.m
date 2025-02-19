@@ -1,5 +1,15 @@
 %% Transforming the electrodes coordinates from MNI space into native space (ICE study)
+% Reads depth electrode coordinates in MNI space from Excel.
+% Transforms them into the subject’s native anatomical space (T1).
+% Further transforms them into the subject’s functional fMRI space.
+% Saves the final coordinates as an Excel file (.xlsx).
+
 % written by Tahereh Rashnavadi, Feb 2025
+
+% ON MY HARD DRIVE 
+% ICE_reg_folder = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/ICE_denoised_filtered_funcs';
+% electrodes_coords_folder  = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/coordinates';
+% output_folder = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/native_space_electrodes_coords'; % baseElecDir: in Native space as the fMRI images
 
 % Define base directories
 ICE_reg_folder = '/work/goodyear_lab/Tara/ICE_denoised_filtered_funcs/'; % Path to subject reg folders
@@ -15,7 +25,7 @@ end
 subject_list = arrayfun(@(subject_number) sprintf('ICE%03d', subject_number), 1:70, 'UniformOutput', false);
 
 % Loop through each subject
-for subject_index = 1:length(subject_list)
+for subject_index = 13:length(subject_list) % from subject 13 i am analysing
     subject_id = subject_list{subject_index};
     
     % Find corresponding electrode coordinates file
@@ -33,23 +43,32 @@ for subject_index = 1:length(subject_list)
     % Loop through each run
     for run_index = 1:length(run_directories)
         run_folder_path = fullfile(subject_folder_path, run_directories(run_index).name, 'reg');
-        transformation_matrix_path = fullfile(run_folder_path, 'standard2highres.mat');
+        % Load transformation matrix from MNI to native anatomical space
+        mni2anat_matrix_path = fullfile(run_folder_path, 'standard2highres.mat');
         
-        if ~isfile(transformation_matrix_path)
-            fprintf('Skipping %s %s: No transformation matrix found.\n', subject_id, run_directories(run_index).name);
+        if ~isfile(mni2anat_matrix_path)
+            fprintf('Skipping %s %s: No MNI to native transformation matrix found.\n', subject_id, run_directories(run_index).name);
             continue;
         end
-        
+
+        % Load the transformation matrix
+        mni2anat_mat = load(mni2anat_matrix_path, '-ascii'); % 4x4 affine transformation matrix
+
         % Load the Excel file (raw to keep text and numbers)
         [~, ~, raw_data] = xlsread(electrode_file_path);
 
         % Extract headers from raw (first row)
         header_row = raw_data(1, :);
+
+        % All data rows (exclude header)
+        all_rows = raw_data(2:end, :);  % keep everything
         
         % Find column indices for X, Y, Z coordinates
         x_idx = find(strcmpi(header_row, 'x'));
         y_idx = find(strcmpi(header_row, 'y'));
         z_idx = find(strcmpi(header_row, 'z'));
+        type_idx = find(strcmpi(header_row, 'Electrode type')); % Column for depth/non-depth classification
+
 
         % Ensure coordinate columns are found
         if isempty(x_idx) || isempty(y_idx) || isempty(z_idx)
@@ -57,77 +76,115 @@ for subject_index = 1:length(subject_list)
             continue;
         end
 
-        % Extract all data rows (excluding headers)
-        data_rows = raw_data(2:end, :);  
+        % Create a mask for depth electrodes
+        is_depth = strcmpi(all_rows(:, type_idx), 'depth');
 
-        % Extract MNI coordinates
-        mni_coords = data_rows(:, [x_idx, y_idx, z_idx]);
+        % Extract the subset of rows that are depth electrodes
+        depth_rows = all_rows(is_depth, :);
 
-        % Convert to numeric format, preserving NaN values
-        num_contacts = size(mni_coords, 1);
-        numeric_mni_coords = NaN(num_contacts, 3); % Initialize as NaN
+        % If there are no depth electrodes, skip or just save the original data
+        if isempty(depth_rows)
+            fprintf('No depth electrodes found for %s %s.\n', subject_id, run_directories(run_index).name);
+            continue;
+        end
 
+        % ====== Convert Depth Rows' X/Y/Z to Numeric ======
+        % Extract X, Y, Z data (as a cell array)
+        xyz_cells = depth_rows(:, [x_idx, y_idx, z_idx]);
+
+        % Pre-allocate numeric matrix
+        num_contacts = size(xyz_cells, 1);
+        mni_coords = NaN(num_contacts, 3);
+
+        % Convert each cell to numeric, preserving NaN
         for i = 1:num_contacts
             for j = 1:3
-                if ischar(mni_coords{i, j}) % If it's a string
-                    if strcmpi(mni_coords{i, j}, 'N/A') || isempty(mni_coords{i, j})
-                        numeric_mni_coords(i, j) = NaN; % Keep N/A as NaN
+                val = xyz_cells{i, j};
+                if ischar(val)
+                    % If it's a string, try converting to numeric
+                    tmp = str2double(val);
+                    if isnan(tmp)
+                        % If string is 'N/A' or something not convertible, remain NaN
+                        mni_coords(i, j) = NaN;
                     else
-                        numeric_mni_coords(i, j) = str2double(mni_coords{i, j}); % Convert to number
+                        mni_coords(i, j) = tmp;
                     end
-                elseif isnumeric(mni_coords{i, j}) % If already numeric
-                    numeric_mni_coords(i, j) = mni_coords{i, j};
+                elseif isnumeric(val)
+                    mni_coords(i, j) = val;
+                else
+                    % If it's an unexpected type (like logical), keep as NaN
+                    mni_coords(i, j) = NaN;
                 end
             end
         end
 
-        % Load transformation matrix
-        T = load(transformation_matrix_path, '-ascii');  
+        % ====== MNI → Native Space Transformation ======
+        % Convert MNI coordinates to homogeneous coordinates (Nx4 matrix)
+        homogeneous_mni_coords = [mni_coords'; ones(1, size(mni_coords, 1))]; % Ensure 4xN
 
-        % Convert to homogeneous coordinates (add a column of ones)
-        valid_rows = ~isnan(numeric_mni_coords(:, 1)) & ~isnan(numeric_mni_coords(:, 2)) & ~isnan(numeric_mni_coords(:, 3));
-        homogeneous_coords = [numeric_mni_coords(valid_rows, :), ones(sum(valid_rows), 1)];
+        % Apply MNI to native space transformation
+        native_coords = (mni2anat_mat * homogeneous_mni_coords)'; % Now multiplication is valid
+        native_coords = native_coords(:, 1:3); % Extract only X, Y, Z
 
-        % Apply transformation matrix only to valid coordinates
-        transformed_coords_h = (T * homogeneous_coords')';  
-        native_coords = transformed_coords_h(:, 1:3); % Remove homogeneous coordinate
+        % ====== Check for Native→fMRI Transformation ======
+        % Convert from native space to fMRI space
+        anat2func_matrix_path = fullfile(run_folder_path, 'highres2example_func.mat');
 
-        % Replace transformed values in the raw data while preserving all other columns
-        counter = 1;
-        for i = 1:num_contacts
-            if valid_rows(i)
-                data_rows{i, x_idx} = native_coords(counter, 1);
-                data_rows{i, y_idx} = native_coords(counter, 2);
-                data_rows{i, z_idx} = native_coords(counter, 3);
-                counter = counter + 1;
-            end
+        if isfile(anat2func_matrix_path)
+            anat2func_mat = load(anat2func_matrix_path,'-ascii');
+            homogeneous_native_coords = [native_coords, ones(num_contacts, 1)]';
+            fmri_coords = anat2func_mat * homogeneous_native_coords;
+            fmri_coords = fmri_coords(1:3, :)'; % Extract only X, Y, Z
+        else
+            fprintf('Warning: No anatomical to fMRI transformation matrix found. Using native space coordinates.\n');
+            fmri_coords = native_coords; % If no fMRI transform, default to native space
         end
 
-        % Ensure the column "Electrode Name (lab convention)" is preserved
-        electrode_name_idx = find(strcmpi(header_row, 'Electrode Name (lab convention)'));
-        if isempty(electrode_name_idx)
-            fprintf('Warning: Electrode Name column missing for %s %s.\n', subject_id, run_directories(run_index).name);
+        % ====== Put Transformed Coordinates BACK into all_rows ======
+        % Convert fmri_coords (Nx3 double) into cell format
+        fmri_coords_cell = num2cell(fmri_coords);
+
+        % Overwrite the X/Y/Z columns only for depth electrodes
+        all_rows(is_depth, x_idx) = fmri_coords_cell(:, 1);  % updated X
+        all_rows(is_depth, y_idx) = fmri_coords_cell(:, 2);  % updated Y
+        all_rows(is_depth, z_idx) = fmri_coords_cell(:, 3);  % updated Z
+
+        % ====== Combine headers and all_rows for final output ======
+        final_data = [header_row; all_rows];
+        
+        % Save as a spreadsheet
+        transformed_file_path = fullfile(output_folder, sprintf('%s_transformed_coords.xlsx', subject_id));
+
+        % Attempt to convert final_data to a table
+        try
+            % Using 'VariableNamingRule','preserve' to keep original column names
+            output_table = cell2table(final_data(2:end,:), ...
+                'VariableNames', string(final_data(1,:)), ...
+                'VariableNamingRule', 'preserve');
+            
+            % Write table to Excel
+            writetable(output_table, transformed_file_path, 'FileType','spreadsheet');
+        catch
+            % Fallback: older MATLAB might not have 'VariableNamingRule'
+            writecell(final_data, transformed_file_path);
         end
 
-        % Ensure valid column names for the table
-        for col_idx = 1:length(header_row)
-            if isempty(header_row{col_idx}) || ~ischar(header_row{col_idx})
-                header_row{col_idx} = sprintf('Unknown_Column_%d', col_idx);
-            else
-                header_row{col_idx} = matlab.lang.makeValidName(header_row{col_idx});
-            end
-        end
-
-        % Convert updated raw data into a table, preserving all columns
-        output_table = cell2table(data_rows, 'VariableNames', header_row);
-
-        % Save the transformed data
-        output_file_path = fullfile(output_folder, [subject_id '_channel_info_native.xlsx']);
-        writetable(output_table, output_file_path, 'FileType', 'spreadsheet');
-
-        % Print completion message
-        fprintf('Processed %s %s: Electrode coordinates transformed and saved to %s.\n', subject_id, run_directories(run_index).name, output_file_path);
+        fprintf('Saved transformed coordinates (all columns) for %s in %s\n',...
+            subject_id, transformed_file_path);
     end
 end
 
 disp('All subjects and runs processed.');
+
+
+
+
+
+
+
+
+
+
+
+
+
