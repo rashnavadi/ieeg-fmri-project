@@ -26,7 +26,8 @@ end
 subject_list = arrayfun(@(n) sprintf('ICE%03d', n), 1:70, 'UniformOutput', false);
 
 %% 2) Loop over subjects
-for iSubj = 13:length(subject_list)
+% for iSubj = 13:length(subject_list)
+for iSubj = 42:length(subject_list)
     
     subject_id = subject_list{iSubj};
     fprintf('\n=== Processing %s ===\n', subject_id);
@@ -77,6 +78,12 @@ for iSubj = 13:length(subject_list)
     % Extract only the MNI coords for depth electrodes
     mni_coords = T{is_depth, {'x', 'y', 'z'}};
 
+    % If all MNI coords are NaN or empty for depth, skip
+    if all(isnan(mni_coords(:)))
+        fprintf('All depth coords are NaN for %s. Skipping.\n', subject_id);
+        continue;
+    end
+
     % Create a temporary file for writing MNI coords (for FSL)
     mni_coords_file = fullfile(output_coords_folder, sprintf('%s_MNI_coords.txt', subject_id));
     writematrix(mni_coords, mni_coords_file, 'Delimiter', 'space');
@@ -84,81 +91,97 @@ for iSubj = 13:length(subject_list)
     % Define output file for transformed native-space coordinates
     native_coords_file = fullfile(output_coords_folder, sprintf('%s_native_coords.txt', subject_id));
 
-    
     %----------------------------------------------------------------------
-    % 3) Identify the subject's registration files
-    %    (Modify the run folder name if needed: e.g., 'Run1a' or 'Run1')
+    % 3) Find all runs (Run*, e.g. Run1, Run1a, Run2, Run3b, etc.)
     %----------------------------------------------------------------------
-    run_folder = fullfile(ICE_reg_folder, subject_id, 'Run1a', 'reg');
-    
-    example_func_nii = fullfile(run_folder, 'example_func.nii.gz');
-    standard_nii     = fullfile(run_folder, 'standard.nii.gz');
-    xfm_mat          = fullfile(run_folder, 'example_func2standard.mat'); % we use the reverse .mat file for std2imgcoord
-    
-    % Verify needed files exist
-    if ~exist(example_func_nii,'file') || ~exist(standard_nii,'file') || ~exist(xfm_mat,'file')
-        fprintf('  --> Missing image or matrix for %s. Skipping.\n', subject_id);
+    subject_folder = fullfile(ICE_reg_folder, subject_id);
+    run_dirs = dir(fullfile(subject_folder, 'Run*'));
+
+    if isempty(run_dirs)
+        fprintf('  --> No Run* directories found for %s. Skipping.\n', subject_id);
         continue;
     end
-    
-    %----------------------------------------------------------------------
-    % 4) Build std2imgcoord command:
-    %    We supply standard(=MNI), image(=example_func), and the matrix 
-    %    that goes from example_func→standard or standard→example_func
-    %----------------------------------------------------------------------
-    
-    % Output text file (transformed coords in native space)
-    tmp_native_txt = fullfile(output_coords_folder, [subject_id '_native_tmp.txt']);
-    
-    fsl_cmd = sprintf([ ...
-        'std2imgcoord ' ...
-        '-img "%s" ' ...  % subject image
-        '-std "%s" ' ...  % MNI or standard image
-        '-xfm "%s" ' ...  % transform matrix
-        '%s > %s'], ...   % input coords -> output coords
-        example_func_nii, ...
-        standard_nii, ...
-        xfm_mat, ...
-        mni_coords_file, ...
-        tmp_native_txt);
-    
-    fprintf('  --> Running FSL: %s\n', fsl_cmd);
-    
-    [status, cmdout] = system(fsl_cmd);
-    if status ~= 0
-        fprintf('  --> std2imgcoord failed for %s:\n%s\n', subject_id, cmdout);
-        continue;
+
+    % Loop over each run directory
+    for iRun = 1:length(run_dirs)
+        run_name = run_dirs(iRun).name;  % e.g., "Run1a"
+        run_folder = fullfile(run_dirs(iRun).folder, run_name, 'reg');
+
+        fprintf('\n  --> Checking %s / %s\n', subject_id, run_name);
+
+        %----------------------------------------------------------------------
+        % 4) Identify the subject's registration files
+        %    (Modify the run folder name if needed: e.g., 'Run1a' or 'Run1')
+        %----------------------------------------------------------------------
+        example_func_nii = fullfile(run_folder, 'example_func.nii.gz');
+        standard_nii     = fullfile(run_folder, 'standard.nii.gz');
+        xfm_mat          = fullfile(run_folder, 'example_func2standard.mat'); % we use the reverse .mat file for std2imgcoord
+
+        % Verify needed files exist
+        if ~exist(example_func_nii,'file') || ~exist(standard_nii,'file') || ~exist(xfm_mat,'file')
+            fprintf('  --> Missing image or matrix for %s. Skipping.\n', subject_id);
+            continue;
+        end
+
+        %----------------------------------------------------------------------
+        % 5) Build std2imgcoord command:
+        %    We supply standard(=MNI), image(=example_func), and the matrix
+        %    that goes from example_func→standard or standard→example_func
+        %----------------------------------------------------------------------
+
+        % Output text file (transformed coords in native space)
+        tmp_native_txt = fullfile(output_coords_folder, [subject_id '_native_tmp.txt']);
+
+        fsl_cmd = sprintf([ ...
+            'std2imgcoord ' ...
+            '-img "%s" ' ...  % subject image
+            '-std "%s" ' ...  % MNI or standard image
+            '-xfm "%s" ' ...  % transform matrix
+            '%s > %s'], ...   % input coords -> output coords
+            example_func_nii, ...
+            standard_nii, ...
+            xfm_mat, ...
+            mni_coords_file, ...
+            tmp_native_txt);
+
+        fprintf('  --> Running FSL: %s\n', fsl_cmd);
+
+        [status, cmdout] = system(fsl_cmd);
+        if status ~= 0
+            fprintf('  --> std2imgcoord failed for %s:\n%s\n', subject_id, cmdout);
+            continue;
+        end
+
+        %----------------------------------------------------------------------
+        % 6) Read back the transformed coords and put them in the table
+        %----------------------------------------------------------------------
+        if ~isfile(tmp_native_txt)
+            fprintf('  --> No transformed file output for %s. Skipping.\n', subject_id);
+            continue;
+        end
+
+        native_coords = readmatrix(tmp_native_txt);
+
+        if size(native_coords, 2) ~= 3
+            fprintf('  --> Transformed coords do not have 3 columns for %s. Skipping.\n', subject_id);
+            continue;
+        end
+
+        % Place the new (native) coordinates back into T for the depth electrodes only
+        T{is_depth, {'x', 'y', 'z'}} = native_coords;
+
+        %----------------------------------------------------------------------
+        % 7) Save a new Excel file with the updated (native) coords
+        %----------------------------------------------------------------------
+        out_excel = fullfile(output_coords_folder, [subject_id '_native_space_coords.xlsx']);
+        writetable(T, out_excel, 'FileType', 'spreadsheet');
+
+        fprintf('  --> Saved transformed coords for %s: %s\n', subject_id, out_excel);
     end
-    
-    %----------------------------------------------------------------------
-    % 5) Read back the transformed coords and put them in the table
-    %----------------------------------------------------------------------
-    if ~isfile(tmp_native_txt)
-        fprintf('  --> No transformed file output for %s. Skipping.\n', subject_id);
-        continue;
-    end
-    
-    native_coords = readmatrix(tmp_native_txt);
-    
-    if size(native_coords, 2) ~= 3
-        fprintf('  --> Transformed coords do not have 3 columns for %s. Skipping.\n', subject_id);
-        continue;
-    end
-    
-    % Place the new (native) coordinates back into T for the depth electrodes only
-    T{is_depth, {'x', 'y', 'z'}} = native_coords;
-    
-    %----------------------------------------------------------------------
-    % 6) Save a new Excel file with the updated (native) coords
-    %----------------------------------------------------------------------
-    out_excel = fullfile(output_coords_folder, [subject_id '_native_space_coords.xlsx']);
-    writetable(T, out_excel, 'FileType', 'spreadsheet');
-    
-    fprintf('  --> Saved transformed coords for %s: %s\n', subject_id, out_excel);
-    
-    % Clean up temporary files
-    delete(mni_coords_file);
-    delete(tmp_native_txt);
+    % *Always* delete the temporary files at the end of the loop
+    if exist(mni_coords_file, 'file'), delete(mni_coords_file); end
+    if exist(tmp_native_txt, 'file'), delete(tmp_native_txt); end
 end
+
 
 fprintf('\nAll done!\n');
