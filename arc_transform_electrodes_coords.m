@@ -26,9 +26,7 @@ end
 subject_list = arrayfun(@(n) sprintf('ICE%03d', n), 1:70, 'UniformOutput', false);
 
 %% 2) Loop over subjects
-% for iSubj = 13:length(subject_list)
-for iSubj = 42:length(subject_list)
-    
+for iSubj = 13:length(subject_list)   
     subject_id = subject_list{iSubj};
     fprintf('\n=== Processing %s ===\n', subject_id);
     
@@ -127,6 +125,14 @@ for iSubj = 42:length(subject_list)
         % 5) Build std2imgcoord command:
         %    We supply standard(=MNI), image(=example_func), and the matrix
         %    that goes from example_func→standard or standard→example_func
+        % NOTE:
+        % In FSL, voxel coordinates are zero-indexed (i.e., the first voxel has coordinate (0,0,0)),
+        % whereas in MATLAB, indices start from 1. This means that if you want to access the transformed
+        % voxel coordinates in MATLAB, you need to add 1 to each coordinate obtained from std2imgcoord.
+        % MATLAB uses one-based indexing, meaning that voxel (0,0,0) in FSL is actually (1,1,1) in MATLAB.
+        % if you extract timeseries in matlab you need to Add 1 to shift
+        % from FSL's zero-based index to MATLAB's one-based index,
+        % but i am going to extract timeseries using fsl in terminal
         %----------------------------------------------------------------------
 
         % Output text file (transformed coords in native space)
@@ -137,6 +143,7 @@ for iSubj = 42:length(subject_list)
             '-img "%s" ' ...  % subject image
             '-std "%s" ' ...  % MNI or standard image
             '-xfm "%s" ' ...  % transform matrix
+            '-vox ' ...       % Convert to voxel coordinates (in fsleyes you see the values in voxel location)
             '%s > %s'], ...   % input coords -> output coords
             example_func_nii, ...
             standard_nii, ...
@@ -161,6 +168,11 @@ for iSubj = 42:length(subject_list)
         end
 
         native_coords = readmatrix(tmp_native_txt);
+
+        % if you extract timeseries in matlab you need to Add 1 to shift
+        % from FSL's zero-based index to MATLAB's one-based index,
+        % but i am going to extract timeseries using fsl in terminal
+%         native_coords = native_coords + 1;
 
         if size(native_coords, 2) ~= 3
             fprintf('  --> Transformed coords do not have 3 columns for %s. Skipping.\n', subject_id);
