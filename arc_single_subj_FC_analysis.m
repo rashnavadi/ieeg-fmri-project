@@ -8,7 +8,9 @@
 %
 % Written by Tahereh Rashnavadi, Feb 2025
 
-function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, baseFMriDir, baseElecDir)
+
+
+function arc_single_subj_analysis(subjectID, runID, iedTypes, baseEEGDir, baseFMriDir, baseElecDir)
     %ARC_SINGLE_SUBJ_FC_ANALYSIS  Performs EEG-fMRI analysis for one subject & run.
     %
     % Input arguments:
@@ -43,7 +45,7 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
     % addpath(genpath('/usr/local/fsl/etc/matlab'))  % Example for FSL's MATLAB code if needed
     %% 1. make an output directory
     % --- CREATE AN OUTPUT DIRECTORY FOR THIS SUBJECT/RUN ---
-    outDir = fullfile(baseEEGDir, 'seed_staticFC_results', subjectID, runID);
+    outDir = fullfile(baseEEGDir, 'main_IED_electrodes_as_seeds_staticFC_results', subjectID, runID);
     if ~exist(outDir, 'dir')
         mkdir(outDir);
     end
@@ -134,80 +136,40 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
     end
     
     fprintf('fMRI file: %s\n - Number of volumes: %d\n - TR: %.2f sec\n', fmriFile, nVolumes, TR);
-    
-    %     % If your MATLAB version doesn't handle .nii.gz directly, we can unzip it first:
-    %     unzippedFile = gunzip_if_needed(fmriFile);
-    
-    %% 5. Extract BOLD Time Series for each electrode (3x3x3 neighborhood)
-    % Extracts fMRI timeseries using FSL's fslmeants within MATLAB
-    % Uses a 3×3×3 voxel neighborhood around each electrode location
-    % Averages the 27 voxels to mitigate signal loss due to electrode-induced artifacts
+       
+    %% 5. Call the previously extracted BOLD Time Series for each electrode (3x3x3 neighborhood)
+    % RUN arc_extract_mean_fMRI_TS.m to Extracts fMRI timeseries using FSL's fslmeants within MATLAB
+    % Uses a (3×3×3)-1 voxel neighborhood around each electrode location
+    % Averages the 26 voxels to mitigate signal loss due to electrode-induced artifacts
     % Ensures robust BOLD signals for functional connectivity (FC) analysis
     
     % --- % DEFINE OUTPUT FILE FOR EXTRACTED TIMESERIES FOR THIS SUBJECT/RUN ---
-    outDir_TS = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID);
-    if ~exist(outDir_TS, 'dir')
-        mkdir(outDir_TS);
+    mean_fMRI_TS_path = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.mat', subjectID, runID));
+
+    % Check if the pre-extracted file exists
+    if ~exist(mean_fMRI_TS_path, 'file')
+        error('Pre-extracted fMRI time series file not found: %s', mean_fMRI_TS_path);
     end
-    
-    electrodeTS = nan(nVolumes, nDepthElectrodes); % Correctly preallocate for time series
-    
-    % Define coordinates file for fslmeants (zero-based indexing for FSL)
-    % Compute 3×3×3 neighborhood for each electrode (zero-based for FSL)
-    for i = 1:nDepthElectrodes
-        % Extract the center (zero-based) coordinates for this electrode
-        x = nativeCoords(i,1);
-        y = nativeCoords(i,2);
-        z = nativeCoords(i,3);
-        % IMPORTANT: This assumes your nativeCoords are already zero-based. If your coordinates are 1-based, then you either need to subtract 1 again or adjust accordingly.
-        % -------------------------------------------------------------------------
-        timeseriesFile = fullfile(outDir_TS, sprintf('%s_%s_fMRI_ts.txt', subjectID, runID));
-        maskFile = fullfile(outDir_TS, sprintf('roi_%d.nii.gz', i));
-    
-        % Step 1: Create a 3×3×3 Neighborhood Mask
-        fslCmd1 = sprintf('fslmaths %s -roi %d 3 %d 3 %d 3 0 -1 %s', fmriFile, x, y, z, maskFile);
-        system(fslCmd1);
-    
-        % Step 2: Extract Mean Time Series from the Mask
-        fslCmd2 = sprintf('fslmeants -i %s -m %s -o %s', fmriFile, maskFile, timeseriesFile);
-        [status, cmdout] = system(fslCmd2);
-    
-        if status ~= 0
-            warning('fslmeants failed for electrode %s at (%d, %d, %d): %s', depthChannelNames(i), x, y, z, cmdout);
-            continue;
-        end
-    
-        % Step 3: Load Extracted Time Series
-        tsData = load(timeseriesFile);
-        fprintf('Extracted time series for electrode %s at (%d, %d, %d):\n', depthChannelNames(i), x, y, z);
-    
-        % Ensure time series length matches expected fMRI volume count
-        if length(tsData) ~= nVolumes
-            warning('Mismatch in time series length for electrode %s. Expected %d, got %d.', ...
-                depthChannelNames(i), nVolumes, length(tsData));
-            continue;
-        end
-    
-        electrodeTS(:, i) = tsData;
-        % Remove mask file after use**
-        if exist(maskFile, 'file')
-            delete(maskFile);
-        end
+
+    % Load the pre-extracted electrode time series
+    load(mean_fMRI_TS_path, 'electrodeTS', 'depthChannelNames');
+
+    % Verify loaded data
+    if isempty(electrodeTS) || isempty(depthChannelNames)
+        error('Loaded fMRI time series data is empty or incomplete: %s', mean_fMRI_TS_path);
     end
-    % Define the file paths
-    matFilePath = fullfile(outDir_TS, sprintf('%s_%s_electrodeTS.mat', subjectID, runID));
-    csvFilePath = fullfile(outDir_TS, sprintf('%s_%s_electrodeTS.csv', subjectID, runID));
-    
-    % Save as .MAT file (MATLAB format)
-    save(matFilePath, 'electrodeTS', 'depthChannelNames');
-    
-    % Convert electrodeTS matrix to a table with headers
+
+    fprintf('Loaded pre-extracted fMRI time series for %s, Run: %s\n', subjectID, runID);
+    fprintf('Number of electrodes: %d, fMRI Volumes: %d\n', length(depthChannelNames), size(electrodeTS,1));
+
+    % **Recreate the electrodeTS_table from the loaded data**
     electrodeTS_table = array2table(electrodeTS, 'VariableNames', depthChannelNames);
-    
-    % Save as CSV with headers
+
+    % (Optional) Save the recreated table as CSV if needed
+    csvFilePath = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.csv', subjectID, runID));
     writetable(electrodeTS_table, csvFilePath);
-    
-    %% 6. Compute Static FC (Pearson correlation)
+   
+     %% 6. Compute Static FC (Pearson correlation)
     % Find electrodes with all-zero time series
     zeroElectrodes = all(electrodeTS == 0, 1);
     
@@ -229,8 +191,8 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
     nDepthElectrodes = size(electrodeTS, 2); % Update electrode count
     
     % --- staticFC matrix  ---
-    staticFC = corr(electrodeTS, 'Rows', 'complete');
-    
+    staticFC = corr(electrodeTS, 'Rows', 'complete');  % Compute Pearson correlation
+   
     % --- SAVE the staticFC matrix to .mat ---
     staticFCFile = fullfile(outDir, sprintf('%s_%s_staticFC.mat', subjectID, runID)); % Saves the static functional connectivity matrix to a .mat file in outDir.
     save(staticFCFile, 'staticFC');
@@ -240,7 +202,7 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
     colormap turbo;
     imagesc(staticFC);
     colorbar;
-    title(sprintf('Static FC Matrix - %s %s', subjectID, runID));
+    title(sprintf('Static FC (z-transformed) Matrix - %s %s', subjectID, runID));
     xlabel('Electrodes');
     ylabel('Electrodes');
     set(gca, 'XTick', 1:nDepthElectrodes, 'XTickLabel', depthChannelNames, 'XTickLabelRotation', 45);
@@ -347,8 +309,7 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
         % and this makes the number of common channels less than EEG
         % channels too, also there are channels that EEG has been recorded
         % there but their coordinates are not provided in the excel sheet.
-
-   
+        
         for m = 1:length(mainIdx)
             seedIdx = mainIdx(m);
             seedName = commonChannels{seedIdx};
@@ -367,52 +328,90 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
             % (ii) Extract Time Series of Other Depth Electrodes (ONLY those in commonChannels)
             commonChannelsTS = electrodeTS_table{:, commonChannels};  % Extract numeric matrix for FC calculation
     
-            % (iii) Compute Functional Connectivity (FC)
+             % (iii) Compute Functional Connectivity (FC)
             fcValues = corr(seedTS, commonChannelsTS);  % Compute Pearson correlation
             fcValues(strcmp(commonChannels, seedName)) = 1;  % Self-correlation (optional)
+            fcValues_Z = atanh(fcValues); % Fisher’s Z-transformation
     
             % (iv) Compute Distance from Seed to common Depth Electrodes
             seedIdx = find(strcmp(commonChannels, seedName));  % Find index for distance calculation
             % Step 1: Find indices of survived common channels in depthChannelNames to get their coordinates
             [~, commonDepthIdx] = ismember(commonChannels, depthChannelNames);  % Indices of surviving channels
             commonDepthCoords = depthCoords(commonDepthIdx, :);  % Extract coordinates of the survived electrodes
-    
+
             % Step 2: Find the coordinates of the seed electrode
             seedCoord = nativeCoords(strcmp(depthChannelNames, seedName), :);  % Get seed's coordinates
-    
+
             % Step 3: Compute Euclidean distance from seed to all surviving electrodes
             distVals = sqrt(sum((commonDepthCoords - seedCoord).^2, 2));  % Distance computation
-    
-            % (v) Compare FC with EEG Amplitude, Controlling for Distance
-            xFC       = fcValues(:);  % FC values to depth electrodes
-            dist2seed = distVals(:);  % Distances to depth electrodes
-    
-            % ** Exclude the seed electrode itself (where FC = 1) to avoid bias
-            validIdx = xFC ~= 1;  % Mask to remove seed electrode itself as it acts as an outlier
-    
-            % Remove the seed electrode from all variables
-            xFC_filtered = xFC(validIdx);
+
+
+ % ** Exclude the seed electrode itself (where FC = 1) to avoid
+             % bias, also it avoids atanh(1) which is inf to be in
+             % fcvalues_Z
+            validIdx = fcValues ~= 1;  % Mask to remove seed electrode itself as it acts as an outlier
+            % Remove the seed electrode from all variables 
+            xFC_filtered = fcValues_Z(validIdx);
+            xFC_filtered = xFC_filtered(:);
             yIED_filtered = yIED(validIdx);
-            dist2seed_filtered = dist2seed(validIdx);
-    
+            dist2seed_filtered = distVals(validIdx);
+
+            % Exclude electrodes that are too close (<= threshold) and 
+            % (v) Compare FC with EEG Amplitude, Controlling for Distance
+            % A minimum of four data points is required to compute partial correlation reliably.
+%             threshold_dist = 6;
+            threshold_dist = 7;
+            validIdx_dist = dist2seed_filtered >= threshold_dist;
+
+            % Check if there are any valid electrodes left
+            if ~any(validIdx_dist)
+                warning('All electrodes are closer to the seed than the threshold (%d mm). Stopping analysis.', threshold_dist);
+                continue; % Stops execution of the current function/script
+            end
+
+            xFC_valid_distance = xFC_filtered(validIdx_dist); % FC values to depth electrodes
+            yIED_valid_distance = yIED_filtered(validIdx_dist); % EEG values to depth electrodes
+            dist2seed_valid = dist2seed_filtered(validIdx_dist);
+     
+            
+            % **Check if there are at least 4 data points for correlation and regression**
+            num_valid_electrodes = numel(xFC_valid_distance);
+            if num_valid_electrodes < 4
+                warning('Not enough valid electrodes (%d) after filtering. Skipping this seed.', num_valid_electrodes);
+                continue; % Skip correlation and regression
+            end
+            
             % Pearson correlation: FC vs. EEG amplitude (Without Distance Correction)
-            r_simple   = corr(xFC_filtered, yIED_filtered);
+            r_simple   = corr(xFC_valid_distance, yIED_valid_distance);
+
             % Partial Correlation (Correcting for Distance)
-            r_partial  = partialcorr(xFC_filtered, yIED_filtered, dist2seed_filtered);
+            r_partial  = partialcorr(xFC_valid_distance, yIED_valid_distance, dist2seed_valid);
+
+            % **Apply Fisher z-transformation to correlation values**
+            z_simple   = atanh(r_simple);
+            z_partial  = atanh(r_partial);
     
             % Store correlation results
             results(t).seeds(m).name = seedName;
             results(t).seeds(m).IED_type = iedType;
             results(t).seeds(m).r_simple = r_simple;
             results(t).seeds(m).r_partial = r_partial;
-    
+            results(t).seeds(m).z_simple = z_simple;  % Fisher z-transformed correlation
+            results(t).seeds(m).z_partial = z_partial;
+   
             % (vi) Multiple Regression: IED ~ FC + logDist
             % Dependent Variable: EEG amplitude (IED). Independent Variables: FC and log-transformed distance (logDist).
-            logDist_filtered = log(dist2seed_filtered + eps); % Add eps to avoid log(0)
-            %         invDist_filtered = 1 ./ dist2seed_filtered; % Avoids division by zero since distances are > 0
-    
+            logDist_filtered = log(dist2seed_valid + eps); % Add eps to avoid log(0)
+            %         invDist_filtered = 1 ./ dist2seed_valid; % Avoids division by zero since distances are > 0
+
+            % **Ensure valid regression data before creating the table**
+            if isempty(xFC_valid_distance) || isempty(logDist_filtered) || isempty(yIED_valid_distance)
+                warning('Regression variables are empty after filtering. Skipping this seed.');
+                continue;
+            end
+
             % Create a regression table with the interaction term
-            tbl = table(xFC_filtered, logDist_filtered, yIED_filtered, 'VariableNames', {'FC','LogDist', 'IED'});
+            tbl = table(xFC_valid_distance, logDist_filtered, yIED_valid_distance, 'VariableNames', {'FC','LogDist', 'IED'});
     
             % Fit the regression model with the interaction term
             mdl = fitlm(tbl, 'IED ~ FC + LogDist');
@@ -421,6 +420,11 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
             beta0 = mdl.Coefficients.Estimate(1); % Intercept
             beta1 = mdl.Coefficients.Estimate(2); % FC effect
             beta2 = mdl.Coefficients.Estimate(3); % Log(Distance) effect
+            % Extract p-values for each coefficient (Intercept, FC, LogDist)
+            p_value_intercept = mdl.Coefficients.pValue(1); % p-value for Intercept
+            p_value_fc = mdl.Coefficients.pValue(2);        % p-value for FC
+            p_value_logDist = mdl.Coefficients.pValue(3);   % p-value for Log(Distance)
+
     
             % Store results in structured format
             results(t).seeds(m).beta0 = beta0;
@@ -438,21 +442,29 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
             % Extract F-statistic and p-value from ANOVA table
             results(t).seeds(m).F_stat = anova_results.F(2); % Extracts F-statistic for the model
             results(t).seeds(m).p_value = anova_results.pValue(2); % Extracts p-value for the model
-    
+            results(t).seeds(m).p_value_intercept = p_value_intercept;
+            results(t).seeds(m).p_value_fc = p_value_fc;
+            results(t).seeds(m).p_value_logDist = p_value_logDist;
+
             F_stat = anova_results.F(2); % Extract F-statistic
             p_value = anova_results.pValue(2); % Extract p-valu
     
-            % Append to table format for Excel
-            newRow = {subjectID, runID, iedType, seedName, r_simple, r_partial, beta0, beta1, beta2, ...
-                mdl.Rsquared.Ordinary, mdl.Rsquared.Adjusted, mdl.RMSE, F_stat, p_value, mdl.ModelCriterion.AIC};
+            % Append to table format for Excel, Extract Akaike Information Criterion (AIC) for model comparison
+            newRow = {subjectID, runID, iedType, seedName, r_simple, z_simple, r_partial, z_partial, ...
+                beta0, beta1, beta2, mdl.Rsquared.Ordinary, mdl.Rsquared.Adjusted, mdl.RMSE, ...
+                F_stat, p_value, p_value_fc, p_value_logDist, mdl.ModelCriterion.AIC};
+
             data_table = [data_table; newRow];
     
             % **Display Regression Model Results**
-            fprintf('Seed %s: simple corr(FC, IED) = %.3f, partial corr = %.3f\n', seedName, r_simple, r_partial);
+            fprintf('Seed %s: simple corr(FC, IED) = %.3f, partial corr = %.3f\n', seedName, z_simple, z_partial);
             fprintf('\nRegression for seed %s:\n', seedName);
             disp(mdl);
     
-            %% ** Visualizations**
+           %% ** Visualizations**
+            % make matlab not to display the figures
+            set(0, 'DefaultFigureVisible', 'off');
+
             cleanKey = strrep(thisKey, '_', ' '); % Replace underscore with space or ''
     
             % (a) Scatter Plot: FC vs. EEG Amplitude wrt distance**
@@ -460,46 +472,48 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
             minSize = 70; % Minimum marker size
             maxSize = 200; % Maximum marker size
             % Close electrodes = Big markers, Far electrodes = Small markers
-            markerSizes = maxSize - (maxSize - minSize) * (dist2seed_filtered - min(dist2seed_filtered)) / (max(dist2seed_filtered) - min(dist2seed_filtered));
+            markerSizes = maxSize - (maxSize - minSize) * (dist2seed_valid - min(dist2seed_valid)) / (max(dist2seed_valid) - min(dist2seed_valid));
     
             % Define colormap (e.g., "jet" colormap for smooth transition)
-            colormap turbo;
-            c = dist2seed_filtered; % Color based on distance
+            colormap jet;
+            c = dist2seed_valid; % Color based on distance
     
             % Create scatter plot with color and size encoding distance
             figure('Name', sprintf('%s, FC vs EEG Amplitude - %s', cleanKey, seedName));
-            scatter(xFC_filtered, yIED_filtered, markerSizes, c, 'filled'); % Size & color map to distance
+            scatter(xFC_valid_distance, yIED_valid_distance, markerSizes, c, 'filled', 'MarkerEdgeColor', 'k'); % Size & color map to distance
             colorbar; % Show color legend for distance
             xlabel('Functional Connectivity (FC)');
             ylabel('IED Amplitude');
-            title(sprintf('%s, Seed: %s: FC vs. EEG Amplitude (Color & Size ~ Distance)', cleanKey, seedName));
+            title(sprintf('%s, %s, Seed: %s: FC vs. EEG Amplitude (Color & Size ~ Distance)', cleanKey, runID, seedName));
             grid on;
             box on;
     
             % Save scatter plot
-            scatterFile1 = fullfile(outDir, sprintf('%s_%s_FC_vs_EEG_DistanceCoded.png', subjectID, seedName));
+            scatterFile1 = fullfile(outDir, sprintf('%s_%s_%s_FC_vs_EEG_DistanceCoded.png', subjectID, iedType, seedName));
             saveas(gcf, scatterFile1);
     
             % **(b) Scatter Plot: FC vs. Distance**
             figure('Name', sprintf('%s, Seed:  %s, FC vs Distance', cleanKey, seedName));
-            scatter(dist2seed_filtered, xFC_filtered, 'filled');
+            scatter(dist2seed_valid, xFC_valid_distance, 80, 'b', 'filled', 'MarkerEdgeColor', [0 0 0.5]);
             xlabel('Distance to Seed Electrode');
             ylabel('Functional Connectivity (FC)');
-            title(sprintf('%s, Seed %s: FC vs. Distance', cleanKey, seedName));
+            title(sprintf('%s, %s, Seed %s: FC vs. Distance', cleanKey, runID, seedName));
             grid on;
             box on;
-            scatterFile2 = fullfile(outDir, sprintf('%s_%s_FC_vs_Distance.png', subjectID, seedName));
+
+            scatterFile2 = fullfile(outDir, sprintf('%s_%s_%s_FC_vs_Distance.png', subjectID, iedType, seedName));
             saveas(gcf, scatterFile2);
     
             % **(c) Scatter Plot: EEG Amplitude of IEDs vs. Distance**
             figure('Name', sprintf('%s, seed: %s, Distance_vs_IED', cleanKey, seedName));
-            scatter(dist2seed_filtered, yIED_filtered, 'filled');
+            scatter(dist2seed_valid, yIED_valid_distance, 100, [1 0.5 0], 'filled', 'MarkerEdgeColor', [0.8 0.3 0]);
             xlabel('Distance to Seed Electrode');
             ylabel('IED Amplitude');
-            title(sprintf('%s, Seed: %s, EEG Amplitude of IEDs vs. Distance', cleanKey, seedName));
+            title(sprintf('%s, %s, Seed: %s, EEG Amplitude of IEDs vs. Distance', cleanKey, runID, seedName));
             grid on;
             box on;
-            scatterFile3 = fullfile(outDir, sprintf('%s, Seed: %s, Distance_vs_IED.png', cleanKey, seedName));
+
+            scatterFile3 = fullfile(outDir, sprintf('%s_%s_%s_Distance_vs_IED.png', subjectID, iedType, seedName));
             saveas(gcf, scatterFile3);
     
             % Best for: Simple, clear comparisons of FC across electrodes.
@@ -510,7 +524,7 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
 %             xtickangle(45);
 %             xlabel('Electrodes');
 %             ylabel('Functional Connectivity');
-%             title(sprintf('%s, Seed: %s, Seed-Based FC', cleanKey, seedName));
+%             title(sprintf('%s, %s, Seed: %s, Seed-Based FC', cleanKey, runID,seedName));
 %             grid on;
         end
     end
@@ -519,10 +533,27 @@ function arc_single_subj_FC_analysis(subjectID, runID, iedTypes, baseEEGDir, bas
     save(fcAnalysisMatFile, 'results');
 
     % Save the results as an Excel file
-    column_names = {'Subject', 'Run', 'IED Type', 'Seed', 'Simple Corr (FC, IED)', 'Partial Corr (FC, IED)', ...
-        'Beta0 (Intercept)', 'Beta1 (FC)', 'Beta2 (LogDist)', ...
-        'R-Squared', 'Adjusted R-Squared', 'RMSE', 'F-Statistic', 'p-value', 'AIC'};
-    results_table = cell2table(data_table, 'VariableNames', column_names);
+
+    % Define column names for results table
+    column_names = {'Subject', 'Run', 'IED Type', 'Seed', 'Simple Corr (FC, IED)', ...
+    'Z_transformed Simple Corr (FC, IED)', 'Partial Corr (FC, IED)', ...
+    'Z_transformed Partial Corr (FC, IED)', 'Beta0 (Intercept)', 'Beta1 (FC)', ...
+    'Beta2 (LogDist)', 'R-Squared', 'Adjusted R-Squared', 'RMSE', ...
+    'F-Statistic', 'p-value (Overall Model)', 'p-value (FC)', 'p-value (LogDist)', 'AIC'};
+
+   
+    % Initialize data_table properly before appending rows
+    if ~exist('data_table', 'var') || isempty(data_table)
+        data_table = cell(0, numel(column_names)); % Ensure it has the right structure
+    end
+
+    if ~isempty(data_table)
+        results_table = cell2table(data_table, 'VariableNames', column_names);
+    else
+        warning('No valid data points were processed. Table will not be created.');
+        results_table = table(); % Return an empty table to avoid errors
+    end
+
     writetable(results_table, fcAnalysisExcelFile);
 
     fprintf('Results saved for subject %s, run %s in %s\n', subjectID, runID, outDir);
@@ -630,7 +661,8 @@ function mc_map = define_main_channels_map()
     main_channels_map('ICE018_IED1') = {'dRA1', 'dRA2', 'dRH1', 'dRH2', 'dRH3'};
     main_channels_map('ICE018_IED2') = {'dLA1', 'dLA2', 'dLA3', 'dLH1', 'dLH2', 'dLH3', 'dLpH1', 'dLpH2', 'dLpH3'};
     % main_channels_map('ICE019_IED1') = {'sLipmP8', 'sLspmP8', 'sLpcv8'};
-    main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'};
+    %  ICE020: 'gLi18', 'gLi19', 'gLi20' are grid electrodes
+%     main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'}; % Excluded, electrodes are grid electrodes
     % main_channels_map('ICE021_IED1') = {'sLiOF3'};
     % main_channels_map('ICE021_IED2') = {'sLmT5'};
     main_channels_map('ICE022_IED1') = {'dLA3', 'dLH2', 'dLAl2'};
@@ -642,15 +674,20 @@ function mc_map = define_main_channels_map()
     main_channels_map('ICE027_IED1') = {'dLasT4', 'dLmsT2', 'dLmsT3'};
     main_channels_map('ICE027_IED2') = {'dLA7', 'dLA8'};
     main_channels_map('ICE028_IED1') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6'};
-    main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6', 'gL5', 'gL6', 'gL7'};
-    main_channels_map('ICE028_IED3') = {'gL5', 'gL6', 'gL7'};
+    % main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4',
+    % 'dLpR5', 'dLpR6', 'gL5', 'gL6', 'gL7'};  'gL5', 'gL6', 'gL7' were
+    % removed as of being grid electrodes
+    main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6'};
+    % main_channels_map('ICE028_IED3') = {'gL5', 'gL6', 'gL7'}; all are
+    % grid electrodes
     main_channels_map('ICE029_IED1') = {'dRaH1', 'dRaH2', 'dRaH3', 'dRaH4', 'dRpH1', 'dRpH2', 'dRpH3'};
     main_channels_map('ICE029_IED2') = {'dLaH1', 'dLaH2', 'dLaH3', 'dLA2', 'dLA3', 'dLA4'};
     main_channels_map('ICE030_IED1') = {'dLmOF1', 'dLaH1', 'dLaH7', 'dLaH8', 'dLpH1', 'dLpH7', 'dLpH8'};
     main_channels_map('ICE031_IED1') = {'dLSMA6', 'dLSMA7', 'dLSMA8'};
     main_channels_map('ICE031_IED2') = {'dLPM5', 'dLPM6', 'dLPM7'};
-    main_channels_map('ICE032_IED1') = {'sLpTP3', 'sLpTP4', 'sLpTP5', 'sLpTP6'};
-    main_channels_map('ICE032_IED2') = {'gLiT28', 'gLiT29', 'gLiT30', 'gLiT31'};
+     % ICE032 has no depth electrodes, thus excluded
+%     main_channels_map('ICE032_IED1') = {'sLpTP3', 'sLpTP4', 'sLpTP5', 'sLpTP6'};
+%     main_channels_map('ICE032_IED2') = {'gLiT28', 'gLiT29', 'gLiT30', 'gLiT31'};
     main_channels_map('ICE033_IED1') = {'dRasTg1', 'dRasTg2', 'dRasTg3', 'dRasTg4', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
     main_channels_map('ICE033_IED2') = {'dRlOF2', 'dRlOF3', 'dRlOF4', 'dRlOF5', 'dRlOF6', 'dRlOF7', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
     main_channels_map('ICE034_IED1') = {'dLA1', 'dLA2', 'dLaH1', 'dLaH2', 'dLaH3'};
@@ -682,7 +719,8 @@ function mc_map = define_main_channels_map()
     main_channels_map('ICE045_IED1') = {'dLaH1', 'dLaH2', 'dLaH3', 'dLpH1', 'dLpH2'};
     main_channels_map('ICE045_IED2') = {'dRA1', 'dRA2', 'dRA3', 'dRaH1', 'dRaH2', 'dRaH3'};
     main_channels_map('ICE046_IED1') = {'dRUmTg2'};
-    main_channels_map('ICE046_IED2') = {'dRaIN2'};
+%     main_channels_map('ICE046_IED2') = {'dRaIN2'}; % excluded, as the coordinates for
+%     this electrode are not provided
     main_channels_map('ICE047_IED1') = {'dRaH1', 'dRaH2', 'dRaH3'};
     main_channels_map('ICE047_IED2') = {'dLpH1', 'dLpH2', 'dLpH3'};
     main_channels_map('ICE048_IED1') = {'dLaH1', 'dLaH2', 'dLpH1', 'dLH2', 'dLpH3'};
