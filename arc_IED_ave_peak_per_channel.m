@@ -8,27 +8,22 @@
 
 
 base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/';
-output_base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/Tara';
-baseElecDir = '/Users/trashnavadi/Documents/2024/postdoc/Levan/analysis/arc_cluster/coordinates';
+output_base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara';
+baseElecDir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/coordinates';
 
 % Define the subject list
 % TLE subjects including ICE001, ICE002, ICE005, and ICE012 were excluded as they have strip electrodes.
-subject_order = {'ICE030'};
-% subject_order = {'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
-%                  'ICE049', 'ICE050', 'ICE051', 'ICE052', 'ICE053', 'ICE054', ...
-%                  'ICE055', 'ICE056', 'ICE057', 'ICE058', 'ICE059', 'ICE060', ...
-%                  'ICE062', 'ICE063', 'ICE064', 'ICE065', 'ICE066', ...
-%                  'ICE069', 'ICE070'};
-% subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
-%                  'ICE020', 'ICE022', 'ICE023', 'ICE024', ...
-%                  'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
-%                  'ICE031', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
-%                  'ICE037', 'ICE038', 'ICE039', 'ICE040', 'ICE041', 'ICE042', ...
-%                  'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
-%                  'ICE049', 'ICE050', 'ICE051', 'ICE052', 'ICE053', 'ICE054', ...
-%                  'ICE055', 'ICE056', 'ICE057', 'ICE058', 'ICE059', 'ICE060', ...
-%                  'ICE062', 'ICE063', 'ICE064', 'ICE065', 'ICE066', ...
-%                  'ICE069', 'ICE070'};
+% subject_order = {'ICE014'};
+subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
+                 'ICE020', 'ICE022', 'ICE023', 'ICE024', ...
+                 'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
+                 'ICE031', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
+                 'ICE037', 'ICE038', 'ICE039', 'ICE040', 'ICE041', 'ICE042', ...
+                 'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
+                 'ICE049', 'ICE050', 'ICE051', 'ICE052', 'ICE053', 'ICE054', ...
+                 'ICE055', 'ICE056', 'ICE057', 'ICE058', 'ICE059', 'ICE060', ...
+                 'ICE062', 'ICE063', 'ICE064', 'ICE065', 'ICE066', ...
+                 'ICE069', 'ICE070'};
 
 % Define a mapping for main channels based on subject and IED type
 main_channels_map = containers.Map;
@@ -57,13 +52,14 @@ main_channels_map('ICE014_IED3') = {'dLpIN2'};
 main_channels_map('ICE014_IED4') = {'dLmT1', 'dLmT2'};
 main_channels_map('ICE014_IED5') = {'dRmT2', 'dRmT3', 'dRmT4', 'dRmT5'};
 % ICE015 excluded
-main_channels_map('ICE016_IED1') = {'dLaH1', 'dLmH1'};
+main_channels_map('ICE016_IED1') = {'dLaH1', 'dLmH1'}; % dLaH1 was removed due to noise
 main_channels_map('ICE017_IED1') = {'dRpT1', 'dRpT2'};
 main_channels_map('ICE017_IED2') = {'dRH3', 'dRH4'};
 main_channels_map('ICE018_IED1') = {'dRA1', 'dRA2', 'dRH1', 'dRH2', 'dRH3'};
 main_channels_map('ICE018_IED2') = {'dLA1', 'dLA2', 'dLA3', 'dLH1', 'dLH2', 'dLH3', 'dLpH1', 'dLpH2', 'dLpH3'};
 % main_channels_map('ICE019_IED1') = {'sLipmP8', 'sLspmP8', 'sLpcv8'};
-main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'};
+%  ICE020: 'gLi18', 'gLi19', 'gLi20' are grid electrodes
+%     main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'}; % Excluded, electrodes are grid electrodes
 % main_channels_map('ICE021_IED1') = {'sLiOF3'};
 % main_channels_map('ICE021_IED2') = {'sLmT5'};
 main_channels_map('ICE022_IED1') = {'dLA3', 'dLH2', 'dLAl2'};
@@ -75,15 +71,20 @@ main_channels_map('ICE024_IED1') = {'dLpIN1', 'dLpIN2', 'dLpIN3'};
 main_channels_map('ICE027_IED1') = {'dLasT4', 'dLmsT2', 'dLmsT3'};
 main_channels_map('ICE027_IED2') = {'dLA7', 'dLA8'};
 main_channels_map('ICE028_IED1') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6'};
-main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6', 'gL5', 'gL6', 'gL7'};
-main_channels_map('ICE028_IED3') = {'gL5', 'gL6', 'gL7'};
+% main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4',
+% 'dLpR5', 'dLpR6', 'gL5', 'gL6', 'gL7'};  'gL5', 'gL6', 'gL7' were
+% removed as of being grid electrodes
+main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6'};
+% main_channels_map('ICE028_IED3') = {'gL5', 'gL6', 'gL7'}; all are
+% grid electrodes
 main_channels_map('ICE029_IED1') = {'dRaH1', 'dRaH2', 'dRaH3', 'dRaH4', 'dRpH1', 'dRpH2', 'dRpH3'};
 main_channels_map('ICE029_IED2') = {'dLaH1', 'dLaH2', 'dLaH3', 'dLA2', 'dLA3', 'dLA4'};
 main_channels_map('ICE030_IED1') = {'dLmOF1', 'dLaH1', 'dLaH7', 'dLaH8', 'dLpH1', 'dLpH7', 'dLpH8'};
 main_channels_map('ICE031_IED1') = {'dLSMA6', 'dLSMA7', 'dLSMA8'};
 main_channels_map('ICE031_IED2') = {'dLPM5', 'dLPM6', 'dLPM7'};
-main_channels_map('ICE032_IED1') = {'sLpTP3', 'sLpTP4', 'sLpTP5', 'sLpTP6'};
-main_channels_map('ICE032_IED2') = {'gLiT28', 'gLiT29', 'gLiT30', 'gLiT31'};
+% ICE032 has no depth electrodes, thus excluded
+%     main_channels_map('ICE032_IED1') = {'sLpTP3', 'sLpTP4', 'sLpTP5', 'sLpTP6'};
+%     main_channels_map('ICE032_IED2') = {'gLiT28', 'gLiT29', 'gLiT30', 'gLiT31'};
 main_channels_map('ICE033_IED1') = {'dRasTg1', 'dRasTg2', 'dRasTg3', 'dRasTg4', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
 main_channels_map('ICE033_IED2') = {'dRlOF2', 'dRlOF3', 'dRlOF4', 'dRlOF5', 'dRlOF6', 'dRlOF7', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
 main_channels_map('ICE034_IED1') = {'dLA1', 'dLA2', 'dLaH1', 'dLaH2', 'dLaH3'};
@@ -115,7 +116,8 @@ main_channels_map('ICE044_IED3') = {'dLpIN3', 'dLpIN4'};
 main_channels_map('ICE045_IED1') = {'dLaH1', 'dLaH2', 'dLaH3', 'dLpH1', 'dLpH2'};
 main_channels_map('ICE045_IED2') = {'dRA1', 'dRA2', 'dRA3', 'dRaH1', 'dRaH2', 'dRaH3'};
 main_channels_map('ICE046_IED1') = {'dRUmTg2'};
-main_channels_map('ICE046_IED2') = {'dRaIN2'};
+%     main_channels_map('ICE046_IED2') = {'dRaIN2'}; % excluded, as the coordinates for
+%     this electrode are not provided
 main_channels_map('ICE047_IED1') = {'dRaH1', 'dRaH2', 'dRaH3'};
 main_channels_map('ICE047_IED2') = {'dLpH1', 'dLpH2', 'dLpH3'};
 main_channels_map('ICE048_IED1') = {'dLaH1', 'dLaH2', 'dLpH1', 'dLH2', 'dLpH3'};
@@ -145,11 +147,11 @@ main_channels_map('ICE060_IED1') = {'dRA1', 'dRA2', 'dRaH1', 'dRaH2', 'dRaH3', '
 % ICE061 excluded
 main_channels_map('ICE062_IED1') = {'dRaH1', 'dRaH2','dRA1', 'dRA2', 'dRA3', 'dRpIN4'};
 main_channels_map('ICE062_IED2') = {'dLaH2', 'dLA1', 'dLA2', 'dLpIN1', 'dLpIN2'};
-main_channels_map('ICE063_IED1') = {'dLpH1', 'dLpH2', 'dLaH2', 'dLaH3'}; 
+main_channels_map('ICE063_IED1') = {'dLpH1', 'dLpH2', 'dLaH2', 'dLaH3'};
 main_channels_map('ICE063_IED2') = {'dLA1', 'dLA2'};
 main_channels_map('ICE064_IED1') = {'dRaH1', 'dRaH2', 'dRaH3', 'dRaH4'};
 main_channels_map('ICE064_IED2') = {'dRsO5', 'dRsO6', 'dRsO7', 'dRsO8'};
-main_channels_map('ICE065_IED1') = {'dLpH1', 'dLpH2', 'dLpH3', 'dLaH1', 'dLaH2', 'dLaH3'}; 
+main_channels_map('ICE065_IED1') = {'dLpH1', 'dLpH2', 'dLpH3', 'dLaH1', 'dLaH2', 'dLaH3'};
 main_channels_map('ICE066_IED1') = {'dRpIN1', 'dRpIN2', 'dRpIN3'};
 main_channels_map('ICE066_IED2') = {'dRaH1', 'dRaH2', 'dRpH2'};
 % ICE067 excluded
@@ -160,6 +162,7 @@ main_channels_map('ICE070_IED1') = {'dRaIN1', 'dRaIN2'};
 main_channels_map('ICE070_IED2') = {'dRasT3', 'dRasT4', 'dRasT5'};
 main_channels_map('ICE070_IED3') = {'dRPOP4', 'dRPOP5'};
 % Add more subject-IED mappings as needed
+
 
 
 %% === LOGGING SETUP ===
@@ -182,11 +185,11 @@ for subj_idx = 1:length(subject_order)
     logAndPrint('Processing subject: %s\n', subject);
 
 
-    % Define the new IED directory (where ad times of IEDs wrt EEG time are stored)
+    % Define the new IED directory (where times of IEDs wrt EEG time are stored)
     events_dir = fullfile(output_base_dir, subject, 'adjusted_IED_times');
     
     % List all files in the new events directory before filtering
-    all_ied_files = dir(fullfile(events_dir, '*.txt'));
+    all_ied_files = dir(fullfile(events_dir, '*_IED*_adjusted.txt'));
     if isempty(all_ied_files)
         logAndPrint('No IED files found in directory: %s\n', events_dir);
     else
@@ -198,7 +201,9 @@ for subj_idx = 1:length(subject_order)
 
     % Get all shifted/adjusted IED files (matching _adjusted.txt format)
     ied_timing_files = dir(fullfile(events_dir, '*_IED*_adjusted.txt')); %% IEDs that have already been shifted/adjusted wrt EEG timings (this IEDs are the original inputs for the rest of the analyses)
-    
+    % First filter out dot-underscore files from the dir() results
+    ied_timing_files = ied_timing_files(~startsWith({ied_timing_files.name}, '._'));
+
     % Check if any shifted IED files exist
     if isempty(ied_timing_files)
         logAndPrint('Skipping subject: %s (No adjusted IED timing files found)\n', subject);
@@ -460,7 +465,7 @@ for subj_idx = 1:length(subject_order)
             out_average_name = strrep(ied_timing_file, '.txt', '_average_IEDs.txt');
 %             writematrix(average_ieds, out_average_name, 'Delimiter', 'tab');
 
-            %% Step 3: Find peak amplitude within ±50 ms from the IED peak             
+            %% Step 3A: Find peak amplitude within ±50 ms from the IED peak             
             small_window = round(0.05 * sampling_rate);
             zero_idx = averaging_window + 1;
             search_start = max(1, zero_idx - small_window);
@@ -488,9 +493,32 @@ for subj_idx = 1:length(subject_order)
                     length(channel_labels), length(electrodeTypes), length(peak_amplitudes_ave_ied));
             end
 
+            %% Step 3B: Compute SNR using full-channel noise
+            snr_threshold_db = 5;
+
+            snr_db = zeros(n_channels, 1);  % Preallocate
+            channel_stds = std(eeg_data, 0, 2);  % Noise = std of entire EEG channel
+
+            for ch = 1:n_channels
+                snr_db(ch) = 20 * log10(peak_amplitudes_ave_ied(ch) / channel_stds(ch));
+            end
+
+            % Step 3.1: Filter channels based on SNR threshold
+            valid_idx = snr_db >= snr_threshold_db;
+
+            % Step 3.2: Filter outputs
+            channel_labels = channel_labels(valid_idx);
+            electrodeTypes = electrodeTypes(valid_idx);
+            peak_amplitudes_ave_ied = peak_amplitudes_ave_ied(valid_idx);
+            snr_db = snr_db(valid_idx);  % Optional: save SNRs too
+
+            % Step 3.3: Log how many survived
+            logAndPrint('  ➤ %d channels passed SNR threshold of %d dB\n', sum(valid_idx), snr_threshold_db);
+
             % 4. Save peak amplitudes there
-            outputTable = table(channel_labels(:), electrodeTypes(:), peak_amplitudes_ave_ied(:), ...
-                'VariableNames', {'Channel', 'ElectrodeType', 'PeakAmplitude'});          
+            outputTable = table(channel_labels(:), electrodeTypes(:), peak_amplitudes_ave_ied(:), snr_db(:), ...
+                'VariableNames', {'Channel', 'ElectrodeType', 'PeakAmplitude', 'SNR_dB'});
+
 
             if isempty(outputTable)
                 logAndPrint('⚠ WARNING: No valid peak amplitudes found for subject %s.\n', subject);
