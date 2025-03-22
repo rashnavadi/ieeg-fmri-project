@@ -13,7 +13,7 @@ baseElecDir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/ori
 
 % Define the subject list
 % TLE subjects including ICE001, ICE002, ICE005, and ICE012 were excluded as they have strip electrodes.
-% subject_order = {'ICE014'};
+% subject_order = {'ICE070'};
 subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
                  'ICE020', 'ICE022', 'ICE023', 'ICE024', ...
                  'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
@@ -494,7 +494,9 @@ for subj_idx = 1:length(subject_order)
             end
 
             %% Step 3B: Compute SNR using full-channel noise
-            snr_threshold_db = 5;
+%             snr_threshold_db = 0;   % zero in dB which means peak_amp / std(noise) >= 1
+            snr_threshold_db = -3;   % peak_amp ≥ 0.707 * noise_std
+
 
             snr_db = zeros(n_channels, 1);  % Preallocate
             channel_stds = std(eeg_data, 0, 2);  % Noise = std of entire EEG channel
