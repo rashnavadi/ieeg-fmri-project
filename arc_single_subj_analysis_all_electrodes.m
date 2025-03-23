@@ -26,7 +26,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % addpath('/Users/trashnavadi/Documents/2024/postdoc/Levan/analysis/arc_cluster/scripts');
     % arc_single_subj_FC_analysis('ICE001', 'Run1', ...
     %     {'IED1','IED2'}, ...                    % iedTypes
-    %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara', % baseEEGDir: where the Peak EEG of Averaged IEDs of each channel are saved
+    %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/IED_ave_peak_amplitudes_all_electrodes', % baseEEGDir: where the Peak EEG of Averaged IEDs of each channel are saved
     %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/ICE_denoised_filtered_funcs', ... % baseFMriDir
     %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/native_space_electrodes_coords' % baseElecDir: in Native space as the fMRI images
     % );
@@ -45,7 +45,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % addpath(genpath('/usr/local/fsl/etc/matlab'))  % Example for FSL's MATLAB code if needed
     %% 1. make an output directory
     % --- CREATE AN OUTPUT DIRECTORY FOR THIS SUBJECT/RUN ---
-    outDir = fullfile(baseEEGDir, 'all_electrodes_as_seeds_staticFC_results', subjectID, runID);
+    outDir = fullfile('/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara', 'all_electrodes_as_seeds_staticFC_results', subjectID, runID);
     if ~exist(outDir, 'dir')
         mkdir(outDir);
     end
@@ -144,7 +144,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % Ensures robust BOLD signals for functional connectivity (FC) analysis
     
     % --- % DEFINE OUTPUT FILE FOR EXTRACTED TIMESERIES FOR THIS SUBJECT/RUN ---
-    mean_fMRI_TS_path = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.mat', subjectID, runID));
+    mean_fMRI_TS_path = fullfile('/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/', 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.mat', subjectID, runID));
 
     % Check if the pre-extracted file exists
     if ~exist(mean_fMRI_TS_path, 'file')
@@ -166,7 +166,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     electrodeTS_table = array2table(electrodeTS, 'VariableNames', depthChannelNames);
 
     % (Optional) Save the recreated table as CSV if needed
-    csvFilePath = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.csv', subjectID, runID));
+    csvFilePath = fullfile('/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/', 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.csv', subjectID, runID));
     writetable(electrodeTS_table, csvFilePath);
    
      %% 6. Compute Static FC (Pearson correlation)
@@ -261,14 +261,17 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
 
         [commonChannels, fMRI_Idx, EEG_Idx] = intersect(depthChannelNames, channelNamesEEG);
         fprintf('Total common electrodes between EEG and fMRI for %s: %d\n', iedType, length(commonChannels));
-        
-        % Debugging: Check if final indices match
-        fprintf('Final matched electrodes: %d (should match staticFC size: %d and EEG size: %d)\n', ...
-            length(fMRI_Idx), size(EEG_Idx, 1), length(commonChannels));
-        
+
         % Ensure the indices match the corresponding EEG table
         yIED = IED_ave_info.PeakAmplitude(EEG_Idx); % Extract EEG amplitudes of averaged IEDs per channel for matched electrodes
 
+        % Extract SNR values (if present)
+        if ismember('SNR_dB', IED_ave_info.Properties.VariableNames)
+            snrIED = IED_ave_info.SNR_dB(EEG_Idx); % Match indexing
+        else
+            snrIED = nan(size(yIED)); % fallback
+        end      
+        
         % Store results in the struct using IED type as the key
         EEG_amplitudes_by_IED.(iedType) = yIED;   
         
@@ -314,7 +317,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
                 continue;
             end
     
-            fprintf('\n--- Seed: %s (Idx=%d), IED Type: %s ---\n', seedName, seedIdx, iedType);
+            fprintf('\n--- Subject: %s, Run: %s, IED Type: %s, Seed: %s (Idx=%d) ---\n', subjectID, runID, iedType, seedName, seedIdx);
     
             % (i) Extract Seed Time Series
             % Extract Seed Time Series by Matching the Column Header Name
@@ -340,20 +343,21 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
             % Step 3: Compute Euclidean distance from seed to all surviving electrodes
             distVals = sqrt(sum((commonDepthCoords - seedCoord).^2, 2));  % Distance computation
 
-             % ** Exclude the seed electrode itself (where FC = 1) to avoid
-             % bias, also it avoids atanh(1) which is inf to be in
-             % fcvalues_Z
+            % ** Exclude the seed electrode itself (where FC = 1) to avoid
+            % bias, also it avoids atanh(1) which is inf to be in
+            % fcvalues_Z
             validIdx = fcValues ~= 1;  % Mask to remove seed electrode itself as it acts as an outlier
-            % Remove the seed electrode from all variables 
+            % Remove the seed electrode from all variables
             xFC_filtered = fcValues_Z(validIdx);
             xFC_filtered = xFC_filtered(:);
             yIED_filtered = yIED(validIdx);
+            snrIED_filtered = snrIED(validIdx);
             dist2seed_filtered = distVals(validIdx);
 
-            % Exclude electrodes that are too close (<= threshold) and 
+            % Exclude electrodes that are too close (<= threshold) and
             % (v) Compare FC with EEG Amplitude, Controlling for Distance
             % A minimum of four data points is required to compute partial correlation reliably.
-%             threshold_dist = 6;
+            %             threshold_dist = 6;
             threshold_dist = 7;
             validIdx_dist = dist2seed_filtered >= threshold_dist;
 
@@ -365,16 +369,19 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
 
             xFC_valid_distance = xFC_filtered(validIdx_dist); % FC values to depth electrodes
             yIED_valid_distance = yIED_filtered(validIdx_dist); % EEG values to depth electrodes
+            snrIED_valid_distance = snrIED_filtered(validIdx_dist);
             dist2seed_valid = dist2seed_filtered(validIdx_dist);
-     
-            
+
+            % Debugging: Check if final indices match
+            fprintf('Final analyzed electrodes after applying distance filtering of 7 mm away from the seed electrode: %d \n', length(dist2seed_valid));
+
             % **Check if there are at least 4 data points for correlation and regression**
             num_valid_electrodes = numel(xFC_valid_distance);
             if num_valid_electrodes < 4
                 warning('Not enough valid electrodes (%d) after filtering. Skipping this seed.', num_valid_electrodes);
                 continue; % Skip correlation and regression
             end
-            
+
             % Pearson correlation: FC vs. EEG amplitude (Without Distance Correction)
             r_simple   = corr(xFC_valid_distance, yIED_valid_distance);
 
@@ -384,7 +391,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
             % **Apply Fisher z-transformation to correlation values**
             z_simple   = atanh(r_simple);
             z_partial  = atanh(r_partial);
-    
+
             % Store correlation results
             results(t).seeds(m).name = seedName;
             results(t).seeds(m).IED_type = iedType;
@@ -392,7 +399,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
             results(t).seeds(m).r_partial = r_partial;
             results(t).seeds(m).z_simple = z_simple;  % Fisher z-transformed correlation
             results(t).seeds(m).z_partial = z_partial;
-   
+
             % (vi) Multiple Regression: IED ~ FC + logDist
             % Dependent Variable: EEG amplitude (IED). Independent Variables: FC and log-transformed distance (logDist).
             logDist_filtered = log(dist2seed_valid + eps); % Add eps to avoid log(0)
@@ -406,10 +413,10 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
 
             % Create a regression table with the interaction term
             tbl = table(xFC_valid_distance, logDist_filtered, yIED_valid_distance, 'VariableNames', {'FC','LogDist', 'IED'});
-    
+
             % Fit the regression model with the interaction term
             mdl = fitlm(tbl, 'IED ~ FC + LogDist');
-    
+
             % **Extract Beta Coefficients from the Model**
             beta0 = mdl.Coefficients.Estimate(1); % Intercept
             beta1 = mdl.Coefficients.Estimate(2); % FC effect
@@ -419,20 +426,19 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
             p_value_fc = mdl.Coefficients.pValue(2);        % p-value for FC
             p_value_logDist = mdl.Coefficients.pValue(3);   % p-value for Log(Distance)
 
-    
             % Store results in structured format
             results(t).seeds(m).beta0 = beta0;
             results(t).seeds(m).beta1 = beta1;
             results(t).seeds(m).beta2 = beta2;
-    
+
             % Compute ANOVA table for extracting F-statistic and p-value
             anova_results = anova(mdl);
-    
+
             % Store R², RMSE, and model performance metrics
             results(t).seeds(m).R_squared = mdl.Rsquared.Ordinary;
             results(t).seeds(m).Adjusted_R_squared = mdl.Rsquared.Adjusted;
             results(t).seeds(m).RMSE = mdl.RMSE;
-    
+
             % Extract F-statistic and p-value from ANOVA table
             results(t).seeds(m).F_stat = anova_results.F(2); % Extracts F-statistic for the model
             results(t).seeds(m).p_value = anova_results.pValue(2); % Extracts p-value for the model
@@ -442,14 +448,26 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
 
             F_stat = anova_results.F(2); % Extract F-statistic
             p_value = anova_results.pValue(2); % Extract p-valu
-    
+
             % Append to table format for Excel, Extract Akaike Information Criterion (AIC) for model comparison
-            newRow = {subjectID, runID, iedType, seedName, r_simple, z_simple, r_partial, z_partial, ...
+            % Get SNR of the seed electrode itself (for this IED type)
+            seedIdxInEEGTable = find(strcmp(IED_ave_info.Channel, seedName));
+            if isempty(seedIdxInEEGTable)
+                warning('Could not find SNR for seed %s in table for IED %s. Skipping.', seedName, iedType);
+                continue;
+            end
+            snr_seed = IED_ave_info.SNR_dB(seedIdxInEEGTable);  % SNR of the seed electrode
+
+            % Append single row (not one per target)
+            newRow = {subjectID, runID, iedType, seedName, ...
+                r_simple, z_simple, r_partial, z_partial, ...
                 beta0, beta1, beta2, mdl.Rsquared.Ordinary, mdl.Rsquared.Adjusted, mdl.RMSE, ...
-                F_stat, p_value, p_value_fc, p_value_logDist, mdl.ModelCriterion.AIC};
+                F_stat, p_value, p_value_fc, p_value_logDist, ...
+                snr_seed, mdl.ModelCriterion.AIC};
 
             data_table = [data_table; newRow];
-    
+
+
             % **Display Regression Model Results**
             fprintf('Seed %s: simple corr(FC, IED) = %.3f, partial corr = %.3f\n', seedName, z_simple, z_partial);
             fprintf('\nRegression for seed %s:\n', seedName);
@@ -527,15 +545,14 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     save(fcAnalysisMatFile, 'results');
 
     % Save the results as an Excel file
+    column_names = {'Subject', 'Run', 'IED Type', 'Seed', ...
+        'Simple Corr (FC, IED)', 'Z_transformed Simple Corr (FC, IED)', ...
+        'Partial Corr (FC, IED)', 'Z_transformed Partial Corr (FC, IED)', ...
+        'Beta0 (Intercept)', 'Beta1 (FC)', 'Beta2 (LogDist)', ...
+        'R-Squared', 'Adjusted R-Squared', 'RMSE', ...
+        'F-Statistic', 'p-value (Overall Model)', 'p-value (FC)', ...
+        'p-value (LogDist)', 'SNR of Seed (dB)', 'AIC'};
 
-    % Define column names for results table
-    column_names = {'Subject', 'Run', 'IED Type', 'Seed', 'Simple Corr (FC, IED)', ...
-    'Z_transformed Simple Corr (FC, IED)', 'Partial Corr (FC, IED)', ...
-    'Z_transformed Partial Corr (FC, IED)', 'Beta0 (Intercept)', 'Beta1 (FC)', ...
-    'Beta2 (LogDist)', 'R-Squared', 'Adjusted R-Squared', 'RMSE', ...
-    'F-Statistic', 'p-value (Overall Model)', 'p-value (FC)', 'p-value (LogDist)', 'AIC'};
-
-   
     % Initialize data_table properly before appending rows
     if ~exist('data_table', 'var') || isempty(data_table)
         data_table = cell(0, numel(column_names)); % Ensure it has the right structure
