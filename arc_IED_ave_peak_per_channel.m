@@ -8,14 +8,14 @@
 
 
 base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/4_Data_and_Analysis/';
-output_base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara';
+output_base_dir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/IED_ave_peak_amplitudes_all_electrodes';
 baseElecDir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/original_ICE/coordinates';
 
 % Define the subject list
 % TLE subjects including ICE001, ICE002, ICE005, and ICE012 were excluded as they have strip electrodes.
-% subject_order = {'ICE070'};
+% subject_order = {'ICE013'};
 subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
-                 'ICE020', 'ICE022', 'ICE023', 'ICE024', ...
+                 'ICE022', 'ICE023', 'ICE024', ...
                  'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
                  'ICE031', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
                  'ICE037', 'ICE038', 'ICE039', 'ICE040', 'ICE041', 'ICE042', ...
@@ -58,8 +58,8 @@ main_channels_map('ICE017_IED2') = {'dRH3', 'dRH4'};
 main_channels_map('ICE018_IED1') = {'dRA1', 'dRA2', 'dRH1', 'dRH2', 'dRH3'};
 main_channels_map('ICE018_IED2') = {'dLA1', 'dLA2', 'dLA3', 'dLH1', 'dLH2', 'dLH3', 'dLpH1', 'dLpH2', 'dLpH3'};
 % main_channels_map('ICE019_IED1') = {'sLipmP8', 'sLspmP8', 'sLpcv8'};
-%  ICE020: 'gLi18', 'gLi19', 'gLi20' are grid electrodes
-%     main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'}; % Excluded, electrodes are grid electrodes
+% ICE020: 'gLi18', 'gLi19', 'gLi20' are grid electrodes
+% main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'}; % Excluded, electrodes are grid electrodes
 % main_channels_map('ICE021_IED1') = {'sLiOF3'};
 % main_channels_map('ICE021_IED2') = {'sLmT5'};
 main_channels_map('ICE022_IED1') = {'dLA3', 'dLH2', 'dLAl2'};
@@ -79,7 +79,9 @@ main_channels_map('ICE028_IED2') = {'dLaR1', 'dLaR2', 'dLpR4', 'dLpR5', 'dLpR6'}
 % grid electrodes
 main_channels_map('ICE029_IED1') = {'dRaH1', 'dRaH2', 'dRaH3', 'dRaH4', 'dRpH1', 'dRpH2', 'dRpH3'};
 main_channels_map('ICE029_IED2') = {'dLaH1', 'dLaH2', 'dLaH3', 'dLA2', 'dLA3', 'dLA4'};
-main_channels_map('ICE030_IED1') = {'dLmOF1', 'dLaH1', 'dLaH7', 'dLaH8', 'dLpH1', 'dLpH7', 'dLpH8'};
+% dLmOF1 not recorded in EEG
+% main_channels_map('ICE030_IED1') = {'dLmOF1', 'dLaH1', 'dLaH7', 'dLaH8', 'dLpH1', 'dLpH7', 'dLpH8'};
+main_channels_map('ICE030_IED1') = {'dLaH1', 'dLaH7', 'dLaH8', 'dLpH1', 'dLpH7', 'dLpH8'};
 main_channels_map('ICE031_IED1') = {'dLSMA6', 'dLSMA7', 'dLSMA8'};
 main_channels_map('ICE031_IED2') = {'dLPM5', 'dLPM6', 'dLPM7'};
 % ICE032 has no depth electrodes, thus excluded
@@ -185,7 +187,7 @@ for subj_idx = 1:length(subject_order)
     logAndPrint('Processing subject: %s\n', subject);
 
 
-    % Define the new IED directory (where times of IEDs wrt EEG time are stored)
+    % the new IED directory (where times of IEDs wrt EEG time are stored)
     events_dir = fullfile(output_base_dir, subject, 'adjusted_IED_times');
     
     % List all files in the new events directory before filtering
@@ -420,7 +422,7 @@ for subj_idx = 1:length(subject_order)
             ied_timings_seconds = load(ied_timing_file);
             ied_timings_samples = round(ied_timings_seconds * sampling_rate);
             
-            %% Step 1: Adjust to find IED peak times using sum of squares ±10 ms
+            %% Step 1: Adjust to find IED peak times using max sum of squres across channels within ±10 ms window
             window_samples = round(0.01 * sampling_rate); % ±10 ms
             main_channel_indices = find(ismember(channel_labels, main_channel_names));
             logAndPrint('Main Channel Names: %s\n', strjoin(main_channel_names, ', '));
@@ -451,19 +453,32 @@ for subj_idx = 1:length(subject_order)
             %% Step 2: Compute average IED waveform (±100 ms)
             averaging_window = round(0.1 * sampling_rate);
             average_ieds = zeros(n_channels, 2 * averaging_window + 1);
-            
+
             for ch = 1:n_channels
                 channel_waveforms = zeros(length(shifted_ied_timings), 2 * averaging_window + 1);
                 for i = 1:length(shifted_ied_timings)
-                    avg_window_start = max(1, shifted_ied_timings(i) - averaging_window);
-                    avg_window_end   = min(n_samples, shifted_ied_timings(i) + averaging_window);
-                    channel_waveforms(i, :) = eeg_data(ch, avg_window_start:avg_window_end);
+                    center = shifted_ied_timings(i);
+                    win_start = center - averaging_window;
+                    win_end = center + averaging_window;
+
+                    % Initialize with NaNs for padding
+                    temp_waveform = nan(1, 2 * averaging_window + 1);
+
+                    % Only copy valid data within bounds
+                    valid_start = max(1, win_start);
+                    valid_end = min(n_samples, win_end);
+
+                    insert_start = valid_start - win_start + 1;
+                    insert_end = insert_start + (valid_end - valid_start);
+
+                    temp_waveform(insert_start:insert_end) = eeg_data(ch, valid_start:valid_end);
+                    channel_waveforms(i, :) = temp_waveform;
                 end
-                average_ieds(ch, :) = mean(channel_waveforms, 1, 'omitnan');
+                % average_ieds(ch, :) = mean(channel_waveforms, 1, 'omitnan');
+                average_ieds(ch, :) = sqrt(mean(channel_waveforms.^2, 1, 'omitnan'));
             end
-            
+          
             out_average_name = strrep(ied_timing_file, '.txt', '_average_IEDs.txt');
-%             writematrix(average_ieds, out_average_name, 'Delimiter', 'tab');
 
             %% Step 3A: Find peak amplitude within ±50 ms from the IED peak             
             small_window = round(0.05 * sampling_rate);
@@ -475,8 +490,7 @@ for subj_idx = 1:length(subject_order)
 
             logAndPrint('Size of peak_amplitudes_ave_ied: %d\n', length(peak_amplitudes_ave_ied));
 
-
-            % Save the output file for each subject
+            %% Save the output file for each subject
             % 1. Define the new subfolder path for storing peak amplitudes
             peak_amp_dir = fullfile(output_base_dir, subject, 'peak_amp_IED_per_channel');
 
@@ -493,33 +507,29 @@ for subj_idx = 1:length(subject_order)
                     length(channel_labels), length(electrodeTypes), length(peak_amplitudes_ave_ied));
             end
 
-            %% Step 3B: Compute SNR using full-channel noise
-%             snr_threshold_db = 0;   % zero in dB which means peak_amp / std(noise) >= 1
-            snr_threshold_db = -3;   % peak_amp ≥ 0.707 * noise_std
+            %% Step 3B: Compute SNR using full-channel noise (no filtering applied)
 
-
-            snr_db = zeros(n_channels, 1);  % Preallocate
             channel_stds = std(eeg_data, 0, 2);  % Noise = std of entire EEG channel
+            snr_db = 20 * log10(peak_amplitudes_ave_ied ./ channel_stds);  % SNR in dB
 
-            for ch = 1:n_channels
-                snr_db(ch) = 20 * log10(peak_amplitudes_ave_ied(ch) / channel_stds(ch));
+            % Log summary (optional)
+            logAndPrint('  ➤ Computed SNR (no threshold applied)\n');
+
+            % Step 4: Save results (all channels)
+            outputTable = table(channel_labels(:), electrodeTypes(:), peak_amplitudes_ave_ied(:), snr_db(:), ...
+                'VariableNames', {'Channel', 'ElectrodeType', 'peak_RMS', 'SNR_dB'});
+
+            if isempty(outputTable)
+                logAndPrint('⚠ WARNING: No valid peak amplitudes found for subject %s.\n', subject);
+            else
+                writetable(outputTable, peak_amp_file, 'Delimiter', 'tab', 'WriteVariableNames', true);
             end
 
-            % Step 3.1: Filter channels based on SNR threshold
-            valid_idx = snr_db >= snr_threshold_db;
-
-            % Step 3.2: Filter outputs
-            channel_labels = channel_labels(valid_idx);
-            electrodeTypes = electrodeTypes(valid_idx);
-            peak_amplitudes_ave_ied = peak_amplitudes_ave_ied(valid_idx);
-            snr_db = snr_db(valid_idx);  % Optional: save SNRs too
-
-            % Step 3.3: Log how many survived
-            logAndPrint('  ➤ %d channels passed SNR threshold of %d dB\n', sum(valid_idx), snr_threshold_db);
+            logAndPrint('  --> Done processing %s (Run folder: %s)\n', ied_file_name, run_folder_name);
 
             % 4. Save peak amplitudes there
             outputTable = table(channel_labels(:), electrodeTypes(:), peak_amplitudes_ave_ied(:), snr_db(:), ...
-                'VariableNames', {'Channel', 'ElectrodeType', 'PeakAmplitude', 'SNR_dB'});
+                'VariableNames', {'Channel', 'ElectrodeType', 'peak_RMS', 'SNR_dB'});
 
 
             if isempty(outputTable)
@@ -528,8 +538,68 @@ for subj_idx = 1:length(subject_order)
                 writetable(outputTable, peak_amp_file, 'Delimiter', 'tab', 'WriteVariableNames', true);
             end
 
-            logAndPrint('  --> Done processing %s (Run folder: %s)\n', ied_file_name, run_folder_name);        
-        
+            logAndPrint('  --> Done processing %s (Run folder: %s)\n', ied_file_name, run_folder_name);
+
+            time_axis = linspace(-0.1, 0.1, 2 * averaging_window + 1);  % in seconds
+
+            % Plotting code for average IEDs
+            % === Create subject-specific output folder if it doesn't exist ===
+            fig_output_dir = fullfile(output_base_dir, subject, 'IED_figures');
+            if ~exist(fig_output_dir, 'dir')
+                mkdir(fig_output_dir);
+            end
+
+            % === Define base filename for saving plots ===
+            base_fig_name = sprintf('%s_%s_%s', subject, run_name, ied_type);
+
+            % === Save Line Plot ===
+            % === Save Line Plot ===
+            fig1 = figure('Visible', 'off');
+            hold on;
+
+            offset = 50;  % or any spacing value you used
+
+            for ch = 1:n_channels
+                plot(time_axis, average_ieds(ch, :) + ch * offset);
+            end
+
+            % Now set y-axis ticks and labels outside the loop
+            yticks(offset:offset:n_channels * offset);         % Match offsets
+            yticklabels(channel_labels);                       % Use actual labels
+            ylabel('Channel Label');
+
+            % 🔧 Other labels and formatting
+            xlabel('Time (s)');
+            title(sprintf('Avg IED Waveforms - %s | %s | %s', subject, run_name, ied_type), 'Interpreter', 'none');
+            grid on;
+
+            % 🖋 Optional tweaks
+            ax = gca;
+            ax.FontSize = 8;
+            ax.YTickLabelRotation = 0;
+
+
+            saveas(fig1, fullfile(fig_output_dir, [base_fig_name '_waveform_plot.png']));
+            close(fig1);  % Optional: close to avoid memory buildup
+
+            % === Save Heatmap ===
+            fig2 = figure('Visible', 'off');
+            imagesc(time_axis, 1:n_channels, average_ieds);
+            xlabel('Time (s)');
+            yticks(1:n_channels);
+            yticklabels(channel_labels);
+            ylabel('Channel Label');
+            title(sprintf('Avg IED Heatmap - %s | %s | %s', subject, run_name, ied_type), 'Interpreter', 'none');
+            colorbar;
+            set(gca, 'YDir', 'normal');
+
+            ax = gca;
+            ax.FontSize = 8;
+            ax.YTickLabelRotation = 0;
+
+            saveas(fig2, fullfile(fig_output_dir, [base_fig_name '_heatmap.png']));
+            close(fig2);  % ✅ Clean memory
+
         end % end of ied_timing_files loop
     end % end of run_folders loop
 end % end of subjects loop
