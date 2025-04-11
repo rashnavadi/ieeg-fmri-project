@@ -26,7 +26,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % addpath('/Users/trashnavadi/Documents/2024/postdoc/Levan/analysis/arc_cluster/scripts');
     % arc_single_subj_FC_analysis('ICE001', 'Run1', ...
     %     {'IED1','IED2'}, ...                    % iedTypes
-    %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/IED_ave_peak_amplitudes_all_electrodes', % baseEEGDir: where the Peak EEG of Averaged IEDs of each channel are saved
+    %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara', % baseEEGDir: where the Peak EEG of Averaged IEDs of each channel are saved
     %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/ICE_denoised_filtered_funcs', ... % baseFMriDir
     %     '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/native_space_electrodes_coords' % baseElecDir: in Native space as the fMRI images
     % );
@@ -35,7 +35,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % addpath('/work/levan_lab/Tara')
     % arc_single_subj_FC_analysis('ICE001', 'Run1', ...
     %     {'IED1','IED2'}, ...                    % iedTypes
-    %     '/work/levan_lab/Tara', ...             % baseEEGDir
+    %     '/work/levan_lab/Tara', ... % baseEEGDir
     %     '/work/goodyear_lab/Tara/ICE_denoised_filtered_funcs', ... % baseFMriDir
     %     '/work/levan_lab/Tara/native_space_electrodes_coords' ...  % baseElecDir
     % );
@@ -45,10 +45,11 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % addpath(genpath('/usr/local/fsl/etc/matlab'))  % Example for FSL's MATLAB code if needed
     %% 1. make an output directory
     % --- CREATE AN OUTPUT DIRECTORY FOR THIS SUBJECT/RUN ---
-    outDir = fullfile('/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara', 'all_electrodes_as_seeds_staticFC_results', subjectID, runID);
+    outDir = fullfile(baseEEGDir, 'all_electrodes_as_seeds_staticFC_results', subjectID, runID);
     if ~exist(outDir, 'dir')
         mkdir(outDir);
     end
+
     %% 2. Load electrode coordinates (native space) from the excel sheet
     electrodeFile = fullfile(baseElecDir, [subjectID '_native_space_coords.xlsx']);
     if ~exist(electrodeFile,'file')
@@ -144,7 +145,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     % Ensures robust BOLD signals for functional connectivity (FC) analysis
     
     % --- % DEFINE OUTPUT FILE FOR EXTRACTED TIMESERIES FOR THIS SUBJECT/RUN ---
-    mean_fMRI_TS_path = fullfile('/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/', 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.mat', subjectID, runID));
+    mean_fMRI_TS_path = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.mat', subjectID, runID));
 
     % Check if the pre-extracted file exists
     if ~exist(mean_fMRI_TS_path, 'file')
@@ -166,7 +167,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
     electrodeTS_table = array2table(electrodeTS, 'VariableNames', depthChannelNames);
 
     % (Optional) Save the recreated table as CSV if needed
-    csvFilePath = fullfile('/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/Tara/', 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.csv', subjectID, runID));
+    csvFilePath = fullfile(baseEEGDir, 'fMRI_timeseries', subjectID, runID, sprintf('%s_%s_electrodeTS.csv', subjectID, runID));
     writetable(electrodeTS_table, csvFilePath);
    
      %% 6. Compute Static FC (Pearson correlation)
@@ -236,8 +237,8 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
         iedType = iedTypes{t}; % Get current IED type
 
         % Construct the EEG amplitude file path for this IED type
-        IED_eegAmplitudeFile = fullfile(baseEEGDir, subjectID, 'peak_amp_IED_per_channel', ...
-            [subjectID '_' runID '_' iedType '_adjusted_peak_amplitudes_50ms_ave_IED.txt']);
+        IED_eegAmplitudeFile = fullfile(baseEEGDir, 'IED_ave_peak_amplitudes_all_electrodes', subjectID, 'final_peak_IED_per_channel', ...
+            [subjectID '_' runID '_' iedType '_adjusted_peak_amp_avg_IED_50ms.txt']);
 
         if ~exist(IED_eegAmplitudeFile, 'file')
             warning('EEG amplitude file not found for %s, run %s, IED type %s. Skipping.', subjectID, runID, iedType);
@@ -252,8 +253,8 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
             warning('Column ''Channel'' not found in EEG amplitude file for subject %s.', subjectID);
             continue;
         end
-        if ~ismember('PeakAmplitude', IED_ave_info.Properties.VariableNames)
-            error('Column ''PeakAmplitude'' not found in %s.', IED_eegAmplitudeFile);
+        if ~ismember('peak_RMS', IED_ave_info.Properties.VariableNames)
+            error('Column ''peak_RMS'' not found in %s.', IED_eegAmplitudeFile);
         end
 
         % Extract EEG channel names and amplitudes
@@ -263,7 +264,7 @@ function arc_single_subj_analysis_all_electrodes(subjectID, runID, iedTypes, bas
         fprintf('Total common electrodes between EEG and fMRI for %s: %d\n', iedType, length(commonChannels));
 
         % Ensure the indices match the corresponding EEG table
-        yIED = IED_ave_info.PeakAmplitude(EEG_Idx); % Extract EEG amplitudes of averaged IEDs per channel for matched electrodes
+        yIED = IED_ave_info.peak_RMS(EEG_Idx); % Extract EEG amplitudes of averaged IEDs per channel for matched electrodes
 
         % Extract SNR values (if present)
         if ismember('SNR_dB', IED_ave_info.Properties.VariableNames)
