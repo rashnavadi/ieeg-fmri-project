@@ -13,23 +13,17 @@ baseElecDir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/ori
 
 % Define the subject list
 % TLE subjects including ICE001, ICE002, ICE005, and ICE012 were excluded as they have strip electrodes.
-subject_order = {'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
+% subject_order = {'ICE045'};
+subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
+                 'ICE022', 'ICE023', 'ICE024', ...
+                 'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
+                 'ICE031', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
+                 'ICE037', 'ICE038', 'ICE039', 'ICE040', 'ICE041', 'ICE042', ...
+                 'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
                  'ICE049', 'ICE050', 'ICE051', 'ICE052', 'ICE053', 'ICE054', ...
                  'ICE055', 'ICE056', 'ICE057', 'ICE058', 'ICE059', 'ICE060', ...
                  'ICE062', 'ICE063', 'ICE064', 'ICE065', 'ICE066', ...
                  'ICE069', 'ICE070'};
-
-
-% subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
-%                  'ICE022', 'ICE023', 'ICE024', ...
-%                  'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
-%                  'ICE031', 'ICE033', 'ICE034', 'ICE035', 'ICE036', ...
-%                  'ICE037', 'ICE038', 'ICE039', 'ICE040', 'ICE041', 'ICE042', ...
-%                  'ICE043', 'ICE044', 'ICE045', 'ICE046', 'ICE047', 'ICE048', ...
-%                  'ICE049', 'ICE050', 'ICE051', 'ICE052', 'ICE053', 'ICE054', ...
-%                  'ICE055', 'ICE056', 'ICE057', 'ICE058', 'ICE059', 'ICE060', ...
-%                  'ICE062', 'ICE063', 'ICE064', 'ICE065', 'ICE066', ...
-%                  'ICE069', 'ICE070'};
 
 % Define a mapping for main channels based on subject and IED type
 main_channels_map = containers.Map;
@@ -61,13 +55,20 @@ main_channels_map('ICE014_IED5') = {'dRmT2', 'dRmT3', 'dRmT4', 'dRmT5'};
 main_channels_map('ICE016_IED1') = {'dLaH1', 'dLmH1'}; % dLaH1 was removed due to noise
 main_channels_map('ICE017_IED1') = {'dRpT1', 'dRpT2'};
 main_channels_map('ICE017_IED2') = {'dRH3', 'dRH4'};
-main_channels_map('ICE018_IED1') = {'dRA1', 'dRA2', 'dRH1', 'dRH2', 'dRH3'};
-main_channels_map('ICE018_IED2') = {'dLA1', 'dLA2', 'dLA3', 'dLH1', 'dLH2', 'dLH3', 'dLpH1', 'dLpH2', 'dLpH3'};
+
+% main_channels_map('ICE018_IED1') = {'dRA1', 'dRA2', 'dRH1', 'dRH2', 'dRH3'};  
+% 'dRA1' and 'dRH3' do not exist
+main_channels_map('ICE018_IED1') = {'dRA2', 'dRH1', 'dRH2'};
+% main_channels_map('ICE018_IED2') = {'dLA1', 'dLA2', 'dLA3', 'dLH1', 'dLH2', 'dLH3', 'dLpH1', 'dLpH2', 'dLpH3'};
+% 'dLA1' and 'dLA3','dLpH1' do not exist
+main_channels_map('ICE018_IED2') = {'dLA2', 'dLH1', 'dLH2', 'dLH3', 'dLpH2', 'dLpH3'};
+
 % main_channels_map('ICE019_IED1') = {'sLipmP8', 'sLspmP8', 'sLpcv8'};
 % ICE020: 'gLi18', 'gLi19', 'gLi20' are grid electrodes
 % main_channels_map('ICE020_IED1') = {'gLs9', 'gLs10', 'gLi18', 'gLi19', 'gLi20'}; % Excluded, electrodes are grid electrodes
 % main_channels_map('ICE021_IED1') = {'sLiOF3'};
 % main_channels_map('ICE021_IED2') = {'sLmT5'};
+
 main_channels_map('ICE022_IED1') = {'dLA3', 'dLH2', 'dLAl2'};
 main_channels_map('ICE022_IED2') = {'dRA3', 'dRH1', 'dRH2', 'dRH3'};
 main_channels_map('ICE023_IED1') = {'dRmsT5', 'dRmsT6', 'dRpsT5', 'dRpsT6'};
@@ -429,14 +430,16 @@ for subj_idx = 1:length(subject_order)
             ied_timings_samples = round(ied_timings_seconds * sampling_rate);
             
             %% Step 1: Adjust to find IED peak times using max sum of squres across main channels within ±10 ms window
-            window_samples = round(0.01 * sampling_rate); % ±10 ms
+%             window_samples = round(0.015 * sampling_rate); % window#1 ±15 msec
+            min_diff_IED_time = min(diff(ied_timings_seconds));
+            window_samples = round((min_diff_IED_time / 2) * sampling_rate);  % window#1: dynamically use ~⅓ of inter-IED interval
+
             main_channel_indices = find(ismember(channel_labels, main_channel_names));
             if isempty(main_channel_indices)
                 logAndPrint('⚠️ No valid main channels found for %s (%s). Skipping IED visualization.\n', subject, ied_file_name);
                 continue;  % Skip to next IED file
             end
             logAndPrint('Main Channel Names: %s\n', strjoin(main_channel_names, ', '));
-
 
             shifted_ied_timings = zeros(size(ied_timings_samples));
             
@@ -484,14 +487,51 @@ for subj_idx = 1:length(subject_order)
             grid on;
             close(fig);
 
-            %% Step 2: Align the IED peaks per channel first (±30 ms), then Compute average IED waveform (±100 ms)
-            averaging_window = round(0.1 * sampling_rate);
+            %% === Filter out IEDs that occur too closely together (to avoid overlap) ===
+            isi_threshold_sec = 0.03;  % minimum allowed interval in seconds
+            ied_diff = diff(shifted_ied_timings_seconds);
+            keep_ied = [true; ied_diff > isi_threshold_sec];  % Always keep the first IED
+
+            filtered_ied_timings_seconds = shifted_ied_timings_seconds(keep_ied);
+            filtered_ied_timings = round(filtered_ied_timings_seconds * sampling_rate);
+
+            %% === Dynamically set window sizes based on filtered IED timings ===
+            if length(filtered_ied_timings_seconds) >= 2
+                ied_diff_filtered = diff(sort(filtered_ied_timings_seconds));
+                min_isi = min(ied_diff_filtered);  % in seconds
+            else
+                min_isi = 0.03; % Fallback minimum ISI (Inter-Spike Interval) = 30 ms
+            end
+
+            fprintf('⏱️ ========== IED intervals =========:\n  Min ISI: %.3f s\n: %.3f s\n', min_isi);
+
+            fprintf('Filtered out %d of %d IEDs due to short ISI (< %.2f s)\n', ...
+                length(shifted_ied_timings_seconds) - length(filtered_ied_timings_seconds), ...
+                length(shifted_ied_timings_seconds), isi_threshold_sec);
+            
+            %% Define dynamic windows in seconds
+            % === Cap all dynamic windows to 100 ms max (for the subjects with sparse IEDs)===
+            max_window_sec = 0.1;  % 100 ms
+            % Define dynamic windows with upper bounds
+            averaging_win_sec   = min(0.8 * min_isi, max_window_sec);  % window#2
+            local_peak_win_sec  = min(0.5 * min_isi, max_window_sec);  % window#3
+            small_win_sec       = min(0.4 * min_isi, max_window_sec);  % window#4
+            % Convert to samples only once
+            averaging_window = round(averaging_win_sec * sampling_rate);
+            local_peak_win   = round(local_peak_win_sec * sampling_rate);
+            small_window     = round(small_win_sec * sampling_rate);
+
+            fprintf('Window sizes:\n Averaging ±%.3f s\n PeakAlign ±%.3f s\n AmpSearch ±%.3f s\n', ...
+                averaging_win_sec, local_peak_win_sec, small_win_sec);
+
+            %% Step 2: Align the IED peaks per channel first (±30 ms), then Compute average/RMS IED waveform (±50 ms)
+%             averaging_window = round(0.05 * sampling_rate); % window#2 ±50 msec
             average_ieds = zeros(n_channels, 2 * averaging_window + 1);
 
             for ch = 1:n_channels
-                channel_waveforms = zeros(length(shifted_ied_timings), 2 * averaging_window + 1);
-                for i = 1:length(shifted_ied_timings)
-                    center = shifted_ied_timings(i);
+                channel_waveforms = zeros(length(filtered_ied_timings), 2 * averaging_window + 1);
+                for i = 1:length(filtered_ied_timings)
+                    center = filtered_ied_timings(i);
                     win_start = center - averaging_window;
                     win_end = center + averaging_window;
 
@@ -505,31 +545,39 @@ for subj_idx = 1:length(subject_order)
                     insert_end = insert_start + (valid_end - valid_start);
 
                     temp_waveform(insert_start:insert_end) = eeg_data(ch, valid_start:valid_end);
-                    % channel_waveforms(i, :) = temp_waveform;
 
-                    % Align the IED peaks per channel this time, the IED segments are adjusted
-                    % so their peaks line up at time zero—helping to avoid peak smearing in the average:
+                    % Align all the IED peaks per channel this time, the IED segments are adjusted
+                    % so their peaks line up at time zero — helping to avoid peak smearing in the average:
                     % === NEW: Align this individual waveform by its local peak (±30 ms around center)
-                    local_peak_win = round(0.03 * sampling_rate);
+%                     local_peak_win = round(0.02 * sampling_rate); % window#3 ±20 mse
                     zero_idx = averaging_window + 1;
+
                     local_start = max(1, zero_idx - local_peak_win);
                     local_end   = min(length(temp_waveform), zero_idx + local_peak_win);
                     [~, peak_idx_local] = max(abs(temp_waveform(local_start:local_end)));
                     shift_amt = (local_start + peak_idx_local - 1) - zero_idx;
                     temp_waveform_aligned = circshift(temp_waveform, -shift_amt);
 
+                    if abs(min(temp_waveform)) > abs(max(temp_waveform))
+                        temp_waveform = -temp_waveform;  % make all peaks positive
+                    end
+
                     % Store aligned waveform
                     channel_waveforms(i, :) = temp_waveform_aligned;
                 end
-                % average_ieds(ch, :) = mean(channel_waveforms, 1, 'omitnan');  %
-                % Average (RMS)
+%                 %% Temporarily plot the first 10 IEDs after alignment (per channel) to check alignment quality.
+                time_axis = linspace(-0.1, 0.1, 2 * averaging_window + 1);  % in seconds
+
+                %% Average (RMS) to take care of negative polarities not to
+                % cancelling out the positive ampliutdes
                 average_ieds(ch, :) = sqrt(mean(channel_waveforms.^2, 1, 'omitnan'));
             end
           
             out_average_name = strrep(ied_timing_file, '.txt', '_average_IEDs.txt');
 
+
             %% Step 3A: Find peak amplitude within ±50 ms from the IED peak             
-            small_window = round(0.05 * sampling_rate);
+%             small_window = round(0.05 * sampling_rate); % window#4 ±50 msec
             zero_idx = averaging_window + 1;
             search_start = max(1, zero_idx - small_window);
             search_end   = min(size(average_ieds, 2), zero_idx + small_window);
@@ -587,8 +635,6 @@ for subj_idx = 1:length(subject_order)
 
             logAndPrint('  --> Done processing %s (Run folder: %s)\n', ied_file_name, run_folder_name);
 
-            time_axis = linspace(-0.1, 0.1, 2 * averaging_window + 1);  % in seconds
-
             % Plotting code for average IEDs
             % === Create subject-specific output folder if it doesn't exist ===
             fig_output_dir = fullfile(output_base_dir, subject, 'step2_averaged_IED_per_channel');
@@ -603,16 +649,29 @@ for subj_idx = 1:length(subject_order)
             fig1 = figure('Visible', 'off');
             hold on;
 
-            offset = 50;  % or any spacing value you used
+            offset = max(30, round(600 / n_channels));  % scale dynamically
 
             for ch = 1:n_channels
                 plot(time_axis, average_ieds(ch, :) + ch * offset);
             end
 
-            % Now set y-axis ticks and labels outside the loop
-            yticks(offset:offset:n_channels * offset);         % Match offsets
-            yticklabels(channel_labels);                       % Use actual labels
+            % Set Y ticks and labels (left)
+            yticks(offset:offset:n_channels * offset);
+            yticklabels(channel_labels);
             ylabel('Channel Label');
+
+            % Add amplitude labels manually on the right side
+            for ch = 1:n_channels
+                y_pos = ch * offset;
+                text(time_axis(end) + 0.01, y_pos, ...
+                    sprintf('%.1f µV', peak_amplitudes_ave_ied(ch)), ...
+                    'FontSize', 6, 'Color', [0.2 0.6 0.2], ...
+                    'HorizontalAlignment', 'left', ...
+                    'VerticalAlignment', 'middle');
+            end
+
+            % Expand x-axis to fit labels
+            xlim([time_axis(1), time_axis(end) + 0.05]);
 
             % 🔧 Other labels and formatting
             xlabel('Time (s)');
@@ -648,6 +707,7 @@ for subj_idx = 1:length(subject_order)
         end % end of ied_timing_files loop
     end % end of run_folders loop
 end % end of subjects loop
+
 
 logAndPrint('Finished processing all subjects at %s.\n', datetime("now"));
 fclose(fid_log);
