@@ -13,7 +13,7 @@ baseElecDir = '/Volumes/Rashnavadi/Documents/Data_Analysis/2023/analyses/ICE/ori
 
 % Define the subject list
 % TLE subjects including ICE001, ICE002, ICE005, and ICE012 were excluded as they have strip electrodes.
-% subject_order = {'ICE045'};
+% subject_order = {'ICE033'};
 subject_order = {'ICE013', 'ICE014', 'ICE016', 'ICE017', 'ICE018', ...
                  'ICE022', 'ICE023', 'ICE024', ...
                  'ICE027', 'ICE028', 'ICE029', 'ICE030', ...
@@ -94,7 +94,10 @@ main_channels_map('ICE031_IED2') = {'dLPM5', 'dLPM6', 'dLPM7'};
 % ICE032 has no depth electrodes, thus excluded
 %     main_channels_map('ICE032_IED1') = {'sLpTP3', 'sLpTP4', 'sLpTP5', 'sLpTP6'};
 %     main_channels_map('ICE032_IED2') = {'gLiT28', 'gLiT29', 'gLiT30', 'gLiT31'};
-main_channels_map('ICE033_IED1') = {'dRasTg1', 'dRasTg2', 'dRasTg3', 'dRasTg4', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
+% ICE033 'dRaIN2' was not recorded by EEG.
+% main_channels_map('ICE033_IED1') = {'dRasTg1', 'dRasTg2', 'dRasTg3', 'dRasTg4', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
+main_channels_map('ICE033_IED1') = {'dRasTg1', 'dRasTg2', 'dRasTg3', 'dRasTg4', 'dRaIN3', 'dRaIN4'};
+
 main_channels_map('ICE033_IED2') = {'dRlOF2', 'dRlOF3', 'dRlOF4', 'dRlOF5', 'dRlOF6', 'dRlOF7', 'dRaIN2', 'dRaIN3', 'dRaIN4'};
 main_channels_map('ICE034_IED1') = {'dLA1', 'dLA2', 'dLaH1', 'dLaH2', 'dLaH3'};
 main_channels_map('ICE034_IED2') = {'dRaH1', 'dRaH2', 'dRA2', 'dRA3'};
@@ -171,8 +174,6 @@ main_channels_map('ICE070_IED1') = {'dRaIN1', 'dRaIN2'};
 main_channels_map('ICE070_IED2') = {'dRasT3', 'dRasT4', 'dRasT5'};
 main_channels_map('ICE070_IED3') = {'dRPOP4', 'dRPOP5'};
 % Add more subject-IED mappings as needed
-
-
 
 %% === LOGGING SETUP ===
 % Define a single log file for all subjects (append mode)
@@ -430,10 +431,7 @@ for subj_idx = 1:length(subject_order)
             ied_timings_samples = round(ied_timings_seconds * sampling_rate);
             
             %% Step 1: Adjust to find IED peak times using max sum of squres across main channels within ±10 ms window
-%             window_samples = round(0.015 * sampling_rate); % window#1 ±15 msec
-            min_diff_IED_time = min(diff(ied_timings_seconds));
-            window_samples = round((min_diff_IED_time / 2) * sampling_rate);  % window#1: dynamically use ~⅓ of inter-IED interval
-
+            window_samples = round(0.03 * sampling_rate); % window#1 ±30 msec (window_sec = 30 msec)
             main_channel_indices = find(ismember(channel_labels, main_channel_names));
             if isempty(main_channel_indices)
                 logAndPrint('⚠️ No valid main channels found for %s (%s). Skipping IED visualization.\n', subject, ied_file_name);
@@ -487,100 +485,107 @@ for subj_idx = 1:length(subject_order)
             grid on;
             close(fig);
 
-            %% === Filter out IEDs that occur too closely together (to avoid overlap) ===
-            isi_threshold_sec = 0.03;  % minimum allowed interval in seconds
-            ied_diff = diff(shifted_ied_timings_seconds);
-            keep_ied = [true; ied_diff > isi_threshold_sec];  % Always keep the first IED
-
-            filtered_ied_timings_seconds = shifted_ied_timings_seconds(keep_ied);
-            filtered_ied_timings = round(filtered_ied_timings_seconds * sampling_rate);
-
-            %% === Dynamically set window sizes based on filtered IED timings ===
-            if length(filtered_ied_timings_seconds) >= 2
-                ied_diff_filtered = diff(sort(filtered_ied_timings_seconds));
-                min_isi = min(ied_diff_filtered);  % in seconds
-            else
-                min_isi = 0.03; % Fallback minimum ISI (Inter-Spike Interval) = 30 ms
-            end
-
-            fprintf('⏱️ ========== IED intervals =========:\n  Min ISI: %.3f s\n: %.3f s\n', min_isi);
-
-            fprintf('Filtered out %d of %d IEDs due to short ISI (< %.2f s)\n', ...
-                length(shifted_ied_timings_seconds) - length(filtered_ied_timings_seconds), ...
-                length(shifted_ied_timings_seconds), isi_threshold_sec);
-            
-            %% Define dynamic windows in seconds
-            % === Cap all dynamic windows to 100 ms max (for the subjects with sparse IEDs)===
-            max_window_sec = 0.1;  % 100 ms
-            % Define dynamic windows with upper bounds
-            averaging_win_sec   = min(0.8 * min_isi, max_window_sec);  % window#2
-            local_peak_win_sec  = min(0.5 * min_isi, max_window_sec);  % window#3
-            small_win_sec       = min(0.4 * min_isi, max_window_sec);  % window#4
-            % Convert to samples only once
-            averaging_window = round(averaging_win_sec * sampling_rate);
-            local_peak_win   = round(local_peak_win_sec * sampling_rate);
-            small_window     = round(small_win_sec * sampling_rate);
-
-            fprintf('Window sizes:\n Averaging ±%.3f s\n PeakAlign ±%.3f s\n AmpSearch ±%.3f s\n', ...
-                averaging_win_sec, local_peak_win_sec, small_win_sec);
-
             %% Step 2: Align the IED peaks per channel first (±30 ms), then Compute average/RMS IED waveform (±50 ms)
-%             averaging_window = round(0.05 * sampling_rate); % window#2 ±50 msec
-            average_ieds = zeros(n_channels, 2 * averaging_window + 1);
+            averaging_window_samples = round(0.05 * sampling_rate); % window#2 ±50 msec
+            average_ieds = zeros(n_channels, 2 * averaging_window_samples + 1);
 
             for ch = 1:n_channels
-                channel_waveforms = zeros(length(filtered_ied_timings), 2 * averaging_window + 1);
-                for i = 1:length(filtered_ied_timings)
-                    center = filtered_ied_timings(i);
-                    win_start = center - averaging_window;
-                    win_end = center + averaging_window;
+                % Aligned waveforms of each IED, [n_IEDs x timepoints]
+                channel_waveforms = zeros(length(shifted_ied_timings_seconds), 2 * averaging_window_samples + 1);
+                shifted_ied_times_per_channel = zeros(size(shifted_ied_timings_seconds));  % Adjusted IED peak timings (sample units), [n_IEDs x 1]
+
+                for i = 1:length(shifted_ied_timings_seconds)
+                    center_sample = round(shifted_ied_timings_seconds(i) * sampling_rate);
+                    win_start = center_sample - averaging_window_samples;
+                    win_end = center_sample + averaging_window_samples;
 
                     % Initialize with NaNs for padding
-                    temp_waveform = nan(1, 2 * averaging_window + 1);
+                    temp_waveform = nan(1, 2 * averaging_window_samples + 1);
 
                     % Only copy valid data within bounds
                     valid_start = max(1, win_start);
                     valid_end = min(n_samples, win_end);
+                    eeg_segment = eeg_data(ch, valid_start:valid_end);
                     insert_start = valid_start - win_start + 1;
-                    insert_end = insert_start + (valid_end - valid_start);
+                    insert_range = insert_start:(insert_start + length(eeg_segment) - 1);
 
-                    temp_waveform(insert_start:insert_end) = eeg_data(ch, valid_start:valid_end);
-
+                    % Only insert if within waveform bounds
+                    if insert_range(end) <= length(temp_waveform)
+                        temp_waveform(insert_range) = eeg_segment;
+                    else
+                        warning('Skipping IED #%d on channel %s due to out-of-bounds insert range.', i, channel_labels{ch});
+                        continue;
+                    end
+                    
+                    % Align waveform by local peak within ±30 ms
                     % Align all the IED peaks per channel this time, the IED segments are adjusted
                     % so their peaks line up at time zero — helping to avoid peak smearing in the average:
                     % === NEW: Align this individual waveform by its local peak (±30 ms around center)
-%                     local_peak_win = round(0.02 * sampling_rate); % window#3 ±20 mse
-                    zero_idx = averaging_window + 1;
+                    local_peak_win_samples = round(0.03 * sampling_rate); % window#3 ±30 mse
+                    zero_idx = averaging_window_samples + 1;
 
-                    local_start = max(1, zero_idx - local_peak_win);
-                    local_end   = min(length(temp_waveform), zero_idx + local_peak_win);
+                    local_start = max(1, zero_idx - local_peak_win_samples);
+                    local_end   = min(length(temp_waveform), zero_idx + local_peak_win_samples);
                     [~, peak_idx_local] = max(abs(temp_waveform(local_start:local_end)));
                     shift_amt = (local_start + peak_idx_local - 1) - zero_idx;
-                    temp_waveform_aligned = circshift(temp_waveform, -shift_amt);
 
-                    if abs(min(temp_waveform)) > abs(max(temp_waveform))
-                        temp_waveform = -temp_waveform;  % make all peaks positive
+                    % Compute candidate per-channel shift sample
+                    per_channel_sample = center_sample + shift_amt;
+
+                    % Get amplitudes at both time points
+                    amp_global = abs(eeg_data(ch, center_sample));
+                    amp_per_channel = -Inf;  % default invalid
+
+                    if per_channel_sample >= 1 && per_channel_sample <= n_samples && abs(shift_amt) <= local_peak_win_samples
+                        amp_per_channel = abs(eeg_data(ch, per_channel_sample));
                     end
 
-                    % Store aligned waveform
-                    channel_waveforms(i, :) = temp_waveform_aligned;
+                    % Decide which one to keep
+                    if amp_per_channel > amp_global
+                        % ✅ Use per-channel alignment
+                        shifted_ied_times_per_channel(i) = per_channel_sample;
+
+                        % Flip if needed
+                        if abs(min(temp_waveform)) > abs(max(temp_waveform))
+                            temp_waveform = -temp_waveform;
+                        end
+                        temp_waveform_aligned = circshift(temp_waveform, -shift_amt);
+                        channel_waveforms(i, :) = temp_waveform_aligned;
+
+                    else
+                        % 🔁 Keep global-shifted
+                        shifted_ied_times_per_channel(i) = center_sample;
+                        channel_waveforms(i, :) = temp_waveform;  % unshifted
+                    end
                 end
-%                 %% Temporarily plot the first 10 IEDs after alignment (per channel) to check alignment quality.
-                time_axis = linspace(-0.1, 0.1, 2 * averaging_window + 1);  % in seconds
+
+                % === SAVE PER-CHANNEL SHIFTED IED TIMES ===
+                per_channel_shifted_ied_dir = fullfile(output_base_dir, subject, 'step1B_per_channel_shifted_IEDs_by_peak');
+                if ~exist(per_channel_shifted_ied_dir, 'dir')
+                    mkdir(per_channel_shifted_ied_dir);
+                end
 
                 %% Average (RMS) to take care of negative polarities not to
                 % cancelling out the positive ampliutdes
+                channel_label = channel_labels{ch};
+                per_channel_shifted_ied_filename = fullfile(per_channel_shifted_ied_dir, ...
+                    sprintf('%s_%s_per_channel_shifted_IED_times.txt', ied_file_base, channel_label));
+                per_channel_shifted_ied_times_sec = shifted_ied_times_per_channel / sampling_rate;
+                writematrix(per_channel_shifted_ied_times_sec(:), per_channel_shifted_ied_filename, 'Delimiter', 'tab');
+
+                % Compute average RMS waveform
                 average_ieds(ch, :) = sqrt(mean(channel_waveforms.^2, 1, 'omitnan'));
             end
-          
-            out_average_name = strrep(ied_timing_file, '.txt', '_average_IEDs.txt');
 
+            out_average_name = fullfile(per_channel_shifted_ied_dir, [ied_file_base '_average_IEDs.txt']);
+
+            time_axis = linspace(-0.1, 0.1, 2 * averaging_window_samples + 1);  % in seconds
 
             %% Step 3A: Find peak amplitude within ±50 ms from the IED peak             
-%             small_window = round(0.05 * sampling_rate); % window#4 ±50 msec
-            zero_idx = averaging_window + 1;
-            search_start = max(1, zero_idx - small_window);
-            search_end   = min(size(average_ieds, 2), zero_idx + small_window);
+            small_window_samples = round(0.05 * sampling_rate); % window#4 ±50 msec
+            zero_idx = averaging_window_samples + 1;
+            search_start = max(1, zero_idx - small_window_samples);
+            search_end   = min(size(average_ieds, 2), zero_idx + small_window_samples);
             
             peak_amplitudes_ave_ied = max(abs(average_ieds(:, search_start:search_end)), [], 2);
 
@@ -596,7 +601,9 @@ for subj_idx = 1:length(subject_order)
             end
 
             % 3. Build the new output filename inside that folder
-            peak_amp_file = fullfile(peak_amp_dir, [ied_file_name(1:end-4), '_peak_amp_avg_IED_50ms.txt']);
+            %             peak_amp_file = fullfile(peak_amp_dir, [ied_file_name(1:end-4), '_peak_amp_avg_IED_50ms.txt']);
+            peak_amp_file = fullfile(peak_amp_dir, [ied_file_base '_peak_amp_avg_IED_50ms.txt']);
+
 
             if length(channel_labels) ~= length(electrodeTypes) || length(channel_labels) ~= length(peak_amplitudes_ave_ied)
                 error('Mismatch in variable lengths: channel_labels(%d), electrodeTypes(%d), peak_amplitudes_ave_ied(%d)', ...
@@ -711,5 +718,3 @@ end % end of subjects loop
 
 logAndPrint('Finished processing all subjects at %s.\n', datetime("now"));
 fclose(fid_log);
-
-
